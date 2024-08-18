@@ -1,0 +1,6 @@
+#!/usr/bin/env zsh
+
+set -euv
+
+find . -type f -executable -mindepth 2 -exec {} \;
+

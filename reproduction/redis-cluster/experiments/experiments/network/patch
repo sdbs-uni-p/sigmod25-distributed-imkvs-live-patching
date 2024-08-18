@@ -1,0 +1,19 @@
+#!/usr/bin/env zsh
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+
+experiment_name="network-patch"
+
+execute () {
+    masters=$1
+    replicas=$2
+    
+    echo "Master: ${masters} - Replicas: ${replicas}"
+
+    cd ${SCRIPT_DIR}/../../
+    pipenv run python patch-benchmark --config config-cluster-patch-network.yaml --overwrite redis_cluster.config="cluster-configs/cluster-${masters}-${replicas}.yaml"
+}
+
+source ${SCRIPT_DIR}/util
+

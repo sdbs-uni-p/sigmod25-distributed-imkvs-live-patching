@@ -1,0 +1,18 @@
+#!/usr/bin/env zsh
+
+set -eu
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+if [ -f debian.img ]; then
+    echo "VM already exists!"
+    exit 0
+fi
+
+# Download
+wget https://zenodo.org/records/13765240/files/debian.img.tar.xz
+# Extract
+tar xfJv debian.img.tar.xz
+rm debian.img.tar.xz
+

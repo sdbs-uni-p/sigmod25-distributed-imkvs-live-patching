@@ -1,0 +1,38 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+parallel=10
+if [ -z $1 ]; then
+    echo "You must specify a list containg all commits to analyze!"
+    exit 1
+fi
+input_commit_file=$1
+
+if [ ! -z $2 ]; then
+    parallel=$2
+fi
+echo "Using $parallel parallel build directories"
+
+git_clone_name=redis
+
+cd ${SCRIPT_DIR}
+./prepare-build-directories -u https://github.com/redis/redis.git -n ${git_clone_name} -d output/builds -p ${parallel}
+
+commit_file=`mktemp`
+while IFS= read -r line; do
+    cd ${SCRIPT_DIR}/output/builds/1/${git_clone_name}
+    git rev-list --no-merges $line >> ${commit_file}
+
+done < "${input_commit_file}"
+
+
+# Generate commit file dynamically
+commit_files=("${commit_file}")
+
+cd ${SCRIPT_DIR}
+for commit_file in "${commit_files[@]}"; do
+    ./commits-checker -p ${parallel} -t 8 -c ${commit_file} -u ${SCRIPT_DIR}/redis-build-utils -n ${git_clone_name} --cleanup 
+done
+

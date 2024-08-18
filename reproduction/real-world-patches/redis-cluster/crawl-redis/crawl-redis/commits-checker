@@ -1,0 +1,209 @@
+#!/usr/bin/env python3
+
+import os
+from os import path
+import datetime
+import threading
+import subprocess
+import shutil
+import multiprocessing
+
+SCRIPT_DIR = path.dirname(path.abspath(__file__))
+BUILD_DIRECTORY_PATTERN = SCRIPT_DIR + "/output/builds/{}"
+PATCHES_DIRECTORY_PATTERN = SCRIPT_DIR + "/output/patches/{}"
+
+class Worker(threading.Thread):
+
+    def __init__(self, worker_id, commits, lock, script_args):
+        threading.Thread.__init__(self)
+        self.worker_id = worker_id
+        self.commits = commits
+        self.lock = lock
+
+        self.script_args = script_args
+
+    def run(self):
+        print("{} - Worker {} - Start".format(datetime.datetime.now(), self.worker_id))
+
+        git_directory = path.join(BUILD_DIRECTORY_PATTERN.format(self.worker_id), self.script_args["git_name"])
+        if not path.isdir(git_directory):
+            print("Worker {} - \033[91mERROR\033[0m - git directory {} does not exist! This worker is not used...".format(self.worker_id, git_directory))
+            return
+
+        # Perform this loop as long as there are commits to proccess
+        has_work = True 
+        while has_work:
+            # Lock commits list; There might be concurrent access
+            with self.lock:
+                if len(self.commits) > 0:
+                    commit = self.commits.pop(0)
+                    print("Remaining commits: {}".format(len(self.commits)))
+                else:
+                    # Abort; No more commits to process
+                    has_work = False
+                    break
+
+            output_directory = PATCHES_DIRECTORY_PATTERN.format(commit)
+            if path.isdir(output_directory):
+                print("Worker {} - Commit {} already processed. Skipping commit. Result: {}".format(self.worker_id, commit, output_directory))
+                continue
+            os.makedirs(output_directory)
+
+            log_file = path.join(output_directory, "log")
+            os.mknod(log_file)
+
+            log_patch_file = path.join(output_directory, "create-patch")
+            os.mknod(log_patch_file)
+            
+            subprocess_environment = os.environ.copy()
+            subprocess_environment["LOG"] = log_file
+            subprocess_environment["LOG_PATCH"] = log_patch_file
+
+            stdout = None if self.script_args["verbose"] else subprocess.DEVNULL
+            stderr = None if self.script_args["verbose"] else subprocess.DEVNULL
+
+            print("{} - Worker {} - {} - Start Commit".format(datetime.datetime.now(), self.worker_id, commit))
+            
+            cmd = ["./build", 
+                "-b", BUILD_DIRECTORY_PATTERN.format(self.worker_id),
+                "-n", self.script_args["git_name"],
+                "-c", commit,
+                "-o", output_directory,
+                "-t", str(self.script_args["threads"])]
+            if self.script_args["no_install"]:
+                cmd += ["--no-install"]
+
+            build_process = subprocess.run(cmd, 
+                cwd = self.script_args["utils_dir"], 
+                env = subprocess_environment,
+                stdout = stdout, stderr = stderr)
+
+            message = None
+            if build_process.returncode == 0:
+                patch_process = subprocess.run(["./generate-patch",
+                    "-d", output_directory],
+                    env = subprocess_environment,
+                    cwd = self.script_args["utils_dir"], 
+                    stdout = stdout, stderr = stderr)
+
+                if patch_process.returncode == 0:
+                    message = "\033[92mSUCCESS\033[0m"
+                else:
+                    message = "\033[91mPATCH - FAIL\033[0m"
+            else:
+                message = "\033[91mBUILD - FAIL\033[0m"
+            print("{} - Worker {} - {} - End Commit - {}".format(datetime.datetime.now(), self.worker_id, commit, message))
+
+            if self.script_args["cleanup"]:
+                output_bin = path.join(output_directory, "bin")
+                output_build = path.join(output_directory, "build")
+                output_build_new = path.join(output_directory, "build-new")
+
+                if path.isdir(output_bin):
+                    shutil.rmtree(output_bin)
+                if path.isdir(output_build):
+                    shutil.rmtree(output_build)
+                if path.isdir(output_build_new):
+                    shutil.rmtree(output_build_new)
+
+        print("{} - Worker {} - End".format(datetime.datetime.now(), self.worker_id))
+
+
+def binary_analysis(parallel_tasks, commit_file, git_name, utils_dir, threads, cleanup, verbose, no_install):
+    commit_file = path.abspath(commit_file)
+    utils_dir = path.abspath(utils_dir)
+
+    if not path.isfile(commit_file):
+        print("The commit file {} does not exist!".format(commit_file))
+        exit(1)
+    if not path.isdir(utils_dir):
+        print("The utils directory {} does not exist!".format(utils_dir))
+        exit(1)
+    if parallel_tasks <= 0:
+        print("Parallel tasks {} is set to a value <= 0!".format(parallel_tasks))
+        exit(1)
+
+    if threads <= 0:
+        threads = multiprocessing.cpu_count()
+
+    with open(commit_file, "r") as f:
+        lines = f.readlines()
+
+    commits = [line.strip() for line in lines if len(line.strip()) > 0]
+    import random
+    random.shuffle(commits)
+    
+    commits_lock = threading.Lock()
+
+    script_args = {
+            "utils_dir": utils_dir,
+            "threads": threads,
+            "verbose": verbose,
+            "cleanup": cleanup,
+            "git_name": git_name,
+            "no_install": no_install,
+            }
+
+    print("Use 'kill -9 -{}' to kill the processes and all siblings".format(os.getpid()))
+    workers = []
+    for i in range(0, parallel_tasks):
+        w = Worker(i + 1, commits, commits_lock, script_args)
+        w.start()
+        workers.append(w)
+
+    for w in workers:
+        # Wait for workers to finish
+        w.join()
+
+if __name__ == "__main__":
+    from argparse import ArgumentParser
+    parser = ArgumentParser()
+
+    parser.add_argument("-p", "--parallel",
+            dest="parallel",
+            help="The number of parallel builds",
+            required=True,
+            type=int)
+
+    parser.add_argument("-c", "--commit-file",
+            dest="commit_file",
+            help="The file containing the commits to parse",
+            required=True)
+
+    parser.add_argument("-u", "--utils-dir",
+            dest="utils_dir",
+            help="The directory containing the DBMS utils scripts like build, generate-patch",
+            required=True)
+
+    parser.add_argument("-n", "--git-name",
+            dest="git_name",
+            help="The name of the git repository on disk. E.g. git clone ... XY, so XY should be specified as git_name",
+            required=True)
+
+    parser.add_argument("-v", "--verbose",
+            dest="verbose",
+            action="store_true",
+            help="Verbose output")
+
+    parser.add_argument("--no-install",
+            dest="no_install",
+            action="store_true",
+            help="Add the --no-install flag to the build script.")
+
+
+    parser.add_argument("-t", "--threads", 
+            dest="threads",
+            help="The number of threads that should be use for compilation.",
+            default=multiprocessing.cpu_count(),
+            type=int)
+
+    parser.add_argument("--cleanup",
+            dest="cleanup",
+            help="Cleanup the build and build-new directory once they are created. Just store the object diffs..",
+            action="store_true")
+
+
+    args = parser.parse_args()
+
+    binary_analysis(args.parallel, args.commit_file, args.git_name, args.utils_dir, args.threads, args.cleanup, args.verbose, args.no_install)
+

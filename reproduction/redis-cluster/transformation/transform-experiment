@@ -1,0 +1,12 @@
+#!/usr/bin/env zsh
+
+set -e
+
+if [ `ls -1 $1/*.duckdb 2>/dev/null | wc -l` != 0 ]; then
+    echo "Skipping as there is already a duckdb file!"
+    exit 0
+fi
+
+./beder-transform-dir $1 $2 $3
+#./duckdb-utils/merge-dir $1
+

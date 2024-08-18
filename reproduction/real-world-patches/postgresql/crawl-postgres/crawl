@@ -1,0 +1,33 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+parallel=10
+if [ -z $1 ]; then
+    echo "You must specify a list containg all commits to analyze!"
+    exit 1
+fi
+commit_file=$1
+
+if [ ! -z $2 ]; then
+    parallel=$2
+fi
+echo "Using $parallel parallel build directories"
+
+git_clone_name=postgres
+
+cd ${SCRIPT_DIR}
+./prepare-build-directories -u https://github.com/postgres/postgres.git -n ${git_clone_name} -d output/builds -p ${parallel}
+
+# Use static commit file
+# commit_files=("${SCRIPT_DIR}/commits/mariadb-10.5.0-10.5.13")
+
+# Generate commit file dynamically
+commit_files=("${commit_file}")
+
+cd ${SCRIPT_DIR}
+for commit_file in "${commit_files[@]}"; do
+    ./commits-checker -p ${parallel} -t 8 -c ${commit_file} -u ${SCRIPT_DIR}/postgres-wfpatch-utils -n ${git_clone_name} --cleanup 
+done
+

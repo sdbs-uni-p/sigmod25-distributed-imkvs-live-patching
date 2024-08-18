@@ -1,0 +1,71 @@
+#!/usr/bin/env python
+from argparse import ArgumentParser
+import tempfile
+from typing import List
+import os
+import subprocess
+import time
+
+SCRIPT_DIR = os.path.realpath(os.path.dirname(__file__))
+INPUT_DIR = os.path.join(SCRIPT_DIR, "input")
+
+# A list that collects all temporary directories..
+DELETE_AT_END: List[tempfile.TemporaryDirectory] = []
+
+def create_tmp_dir(base_dir: str) -> str:
+    tmp = tempfile.TemporaryDirectory(dir=base_dir)
+    DELETE_AT_END.append(tmp)
+    return tmp.name
+
+
+def create_plot(plot: str, input_files: List[str], output_dir: str) -> bool:
+    def sanitize_path(p: str) -> str:
+        return p.removeprefix(SCRIPT_DIR + "/")
+
+    cmd = [f"./{plot}", 
+            *input_files,
+            output_dir
+          ]
+    ret = subprocess.call(cmd)
+    return ret == 0
+
+
+def main():
+    parser = ArgumentParser()
+    parser.add_argument("--input-data", "-i", nargs="+", help="The input data", required=True)
+    parser.add_argument("--plot", "-p", help="The file extecuted for plotting", required=True)
+    parser.add_argument("--output", "-o", help="The output directory", required=True)
+    parser.add_argument("--prefix", help="Prefix that is added to the file name", default="")
+
+    args = parser.parse_args()
+    
+    dsts: List[str] = args.input_data
+    for i in dsts:
+        if not os.path.exists(i):
+            print(f"{i} does not exist!")
+            exit(1)
+
+    output: str = args.output
+    if not os.path.isdir(output):
+        os.mkdir(output)
+
+    plot_output = create_tmp_dir(SCRIPT_DIR)
+
+    success = create_plot(args.plot, dsts, plot_output)
+    print("-" * 30)
+    if not success:
+        print("Error generating the plot! Please debug!")
+    else:
+        print("Successfully generated plots!")
+        for f in [os.path.join(plot_output, f) for f in os.listdir(plot_output)]:
+            print(f"Generated plot: {os.path.basename(f)}")
+            subprocess.call(["mv", f"{f}", f"{output}/{args.prefix}{os.path.basename(f)}"])
+        print(f"Files stored in {output}")
+
+    # Cleanup temporary directories
+    for d in DELETE_AT_END:
+        d.cleanup()
+
+
+if __name__ == "__main__":
+    main()

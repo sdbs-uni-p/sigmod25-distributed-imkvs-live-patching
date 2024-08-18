@@ -1,0 +1,27 @@
+name: "Redis Cluster-Benchmark - Patch"
+
+# We use idle as basis because we do *not* performan any benchmark.
+# But we use different data loads..
+# So we measure synchronization time for an idle system!
+
+_reference:
+  - "config-common-patch.yaml"
+  - "config-common-idle.yaml"
+
+commit: "livepatch-128"
+
+patch_generation:
+  _iterations:
+    - patches: 100
+
+patch:
+  sleep_between_versions: 3
+  sleep_bias: 0.5
+
+benchmark:
+  itme_s: 0 
+  idle_before: 330
+
+# Use patch-benchmark to overwrite the configuration. E.g.
+# patch-benchmark ... --overwrite config: redis_cluster.config='cluster-configs/cluster-7-1.yaml'
+

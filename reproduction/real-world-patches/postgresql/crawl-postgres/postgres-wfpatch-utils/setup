@@ -1,0 +1,15 @@
+#!/usr/bin/env zsh
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+${SCRIPT_DIR}/kpatch/setup
+
+if [ -d build-dir/postgres ]; then
+    exit 0
+fi
+
+mkdir -p build-dir
+cd build-dir
+git clone https://github.com/postgres/postgres.git
+

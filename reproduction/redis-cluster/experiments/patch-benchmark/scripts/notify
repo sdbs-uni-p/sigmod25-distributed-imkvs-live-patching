@@ -1,0 +1,10 @@
+#!/usr/bin/env zsh
+
+set +e
+
+# Command should never produce any error!
+date=`date`
+# Notify other server about current status
+# ssh -o BatchMode=yes -T <SERVER> "echo \"[$date] [`hostname`] ${@}\" >> ~/benchmark.`hostname`"
+set -e
+

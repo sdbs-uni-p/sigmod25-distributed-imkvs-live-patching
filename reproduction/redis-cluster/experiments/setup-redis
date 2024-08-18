@@ -1,0 +1,72 @@
+#!/usr/bin/env zsh
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+
+cd patches
+./setup-live-patches
+
+cd ${SCRIPT_DIR}
+
+if [ ! -d ${SCRIPT_DIR}/build/redis-github ]; then
+    mkdir -p ${SCRIPT_DIR}/build
+    cd ${SCRIPT_DIR}/build
+
+    git clone https://github.com/redis/redis.git redis-github
+fi
+
+cd ${SCRIPT_DIR}/build
+ln -s redis-github redis
+
+cd redis
+git clean -xffd
+git reset --hard
+git checkout 7.0.11
+make -j `nproc`
+cp src/redis-server ${SCRIPT_DIR}/../transformation/beder2
+cp src/redis-cli ${SCRIPT_DIR}/../transformation/beder2
+
+git clean -xffd
+make clean
+
+git checkout 7.0.11
+git am -3 ${SCRIPT_DIR}/patches/redis-network-single-latencies.patch
+set +e
+git tag -d network
+set -e
+git tag network
+
+
+git checkout 7.0.11
+git am -3 ${SCRIPT_DIR}/patches/redis-live-patch.patch
+set +e 
+git tag -d livepatch
+set -e
+git tag livepatch
+
+git am -3 ${SCRIPT_DIR}/patches/redis-network-single-latencies.patch
+set +e 
+git tag -d livepatch-network
+set -e
+git tag livepatch-network
+
+for patch in ${SCRIPT_DIR}/patches/redis-live-patch.patch-*; do
+    patch_file_name=`basename $patch`
+    patch_size=${patch_file_name##*-}
+    
+    git checkout 7.0.11
+    git am -3 $patch
+    set +e 
+    git tag -d livepatch-$patch_size
+    set -e
+    git tag livepatch-$patch_size
+    
+    git am -3 ${SCRIPT_DIR}/patches/redis-network-single-latencies.patch
+    set +e 
+    git tag -d livepatch-$patch_size-network
+    set -e
+    git tag livepatch-$patch_size-network
+done
+
+# make -j`nproc`
+

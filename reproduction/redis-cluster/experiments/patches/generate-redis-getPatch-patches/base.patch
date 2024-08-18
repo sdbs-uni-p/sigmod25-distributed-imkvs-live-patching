@@ -1,0 +1,23 @@
+From aac3ba3622418902788bc2cd2a7522ad8a2435b4 Mon Sep 17 00:00:00 2001
+From: Michael Fruth <Michael.Fruth@uni-passau.de>
+Date: Fri, 18 Aug 2023 19:05:25 +0200
+Subject: [PATCH] Inc. result
+
+---
+ src/patch.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/patch.c b/src/patch.c
+index 771a2bb0f..1dfdbd45c 100644
+--- a/src/patch.c
++++ b/src/patch.c
+@@ -1,5 +1,5 @@
+ #include "server.h"
+ 
+ void patchGetCommandResult(client *c, long long number) {
+-    addReplyBulkLongLong(c, number + 0);
++    addReplyBulkLongLong(c, number + 1);
+ }
+-- 
+2.30.2
+

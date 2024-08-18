@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+VERSION=$1
+
+if [ -f duckdb-${VERSION} ]; then
+  exit 0
+fi
+
+wget https://github.com/duckdb/duckdb/releases/download/v${VERSION}/duckdb_cli-linux-amd64.zip
+unzip duckdb_cli-linux-amd64.zip
+rm duckdb_cli-linux-amd64.zip
+mv duckdb duckdb-${VERSION}
+

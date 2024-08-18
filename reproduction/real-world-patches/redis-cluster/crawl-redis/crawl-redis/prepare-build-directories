@@ -1,0 +1,74 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+function show_help() {
+    echo "Usage: $1 -u|--url <repository-url> -n|--name <clone-output-name> -d|--dir <root-dir> [-p|--parallel <parallelism>]
+    -u|--url <repository-url>\t\tThe url of the git repository to clone.
+    -n|--name <clone-output-name>\t\tThe name of the cloned repository (e.g. git clone <URL> <clone-output-name>)
+    -d|--dir <prepare-root-directory>\t\tThe root of the directory that should be prepared.
+    -p|--parallel <parallelism>\t\tThe number of repositories to creaee
+    "
+    exit 1
+}
+
+parallelism=1
+while [[ "$#" -gt 0 ]]; do
+    case $1 in 
+        -u|--url) url="$2"; shift ;;
+        -n|--git-name) git_name="$2"; shift ;;
+        -d|--dir) prepare_dir="$2"; shift ;;
+        -p|--parallel) parallelism="$2"; shift ;;
+        *) echo "Unknown paramater passed: $1"; show_help $0 ;;
+    esac
+    shift
+done
+
+if [ -z ${url} ] || [ -z ${git_name} ] || [ -z ${prepare_dir} ]; then
+    show_help
+fi
+
+# The following directory structure is applied (e.g. based on parallelism = 3)
+# <prepare_dir>
+#   - 1
+#       - build
+#       - <git_name>
+#   - 2
+#       - build
+#       - <git_name>
+#   - 3
+#       - build
+#       - <git_name>
+if [ ${git_name} = "build" ]; then
+    echo "Build is not allowed as -n|--name"
+    exit 1
+fi
+
+mkdir -p ${prepare_dir}
+prepare_dir=`readlink -f ${prepare_dir}`
+cd ${prepare_dir}
+
+for i in $(seq 1 ${parallelism}); do
+    echo "Preparing ${i}"
+
+    cd ${prepare_dir}
+    mkdir -p ${i}
+    
+    cd ${i}
+    mkdir -p build
+    if [ ! -d ${git_name} ]; then
+        # Just clone if directory does not exist
+        if [ ${i} -eq 1 ]; then
+            echo "Cloning repository ${url}..."
+            git clone ${url} ${git_name}
+        else
+            echo "Sync from previous repository"
+            # Sync from previous directory
+            rsync -a --delete ${prepare_dir}/$(($i-1))/${git_name}/ ${git_name}/
+        fi
+    fi
+    
+    echo "Preparing ${i} done"
+done
+

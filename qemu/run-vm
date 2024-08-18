@@ -1,0 +1,24 @@
+#!/usr/bin/env zsh
+
+# Get the number of sockets
+sockets=$(lscpu | awk '/Socket\(s\):/ {print $2}')
+# Get the number of cores per socket
+cores_per_socket=$(lscpu | awk '/Core\(s\) per socket:/ {print $4}')
+cores_per_socket=$((cores_per_socket - 1))
+# Get the number of threads per core
+threads_per_core=$(lscpu | awk '/Thread\(s\) per core:/ {print $4}')
+
+total_mem_kb=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+total_mem_mb=$((total_mem_kb / 1024))
+total_mem_mb=$((total_mem_mb - 20480 )) # 20 GB less for VM
+
+qemu-system-x86_64 \
+  -hda debian.img \
+  -machine type=pc,accel=kvm \
+  -m ${total_mem_mb} \
+  -cpu host \
+  -smp sockets=$sockets,cores=$cores_per_socket,threads=$threads_per_core \
+  -device e1000,netdev=net0 \
+  -nographic \
+  -netdev user,id=net0,hostfwd=tcp:127.0.0.1:2222-:22
+

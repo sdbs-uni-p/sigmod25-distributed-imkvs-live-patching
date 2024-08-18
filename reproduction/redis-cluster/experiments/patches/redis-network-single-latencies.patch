@@ -1,0 +1,341 @@
+From 3bc2573853955e02058af681e7b38befdeb57a4c Mon Sep 17 00:00:00 2001
+From: Michael Fruth <Michael.Fruth@uni-passau.de>
+Date: Fri, 5 Jan 2024 01:02:05 +0100
+Subject: [PATCH] Add network single latencies counter
+
+---
+ src/cluster.c                  | 14 ++++++++++++++
+ src/cluster.h                  |  7 +++++++
+ src/commands.c                 | 15 +++++++++++++++
+ src/commands/networkcount.json | 24 +++++++++++++++++++++++
+ src/connection.c               |  5 +++++
+ src/connection.h               | 14 +++++++++++++-
+ src/rdb.c                      | 17 +++++++++++++++++
+ src/rio.c                      |  9 +++++++++
+ src/rio.h                      | 10 ++++++++++
+ src/server.c                   | 35 ++++++++++++++++++++++++++++++++++
+ src/server.h                   |  1 +
+ 11 files changed, 150 insertions(+), 1 deletion(-)
+ create mode 100644 src/commands/networkcount.json
+
+diff --git a/src/cluster.c b/src/cluster.c
+index a3929364c..03c01c449 100644
+--- a/src/cluster.c
++++ b/src/cluster.c
+@@ -964,6 +964,9 @@ unsigned int keyHashSlot(char *key, int keylen) {
+  * added to the nodes hash table. */
+ clusterNode *createClusterNode(char *nodename, int flags) {
+     clusterNode *node = zmalloc(sizeof(*node));
++    
++    node->metric_cluster_packets_processed = 0;
++    node->metric_cluster_network_counter = 0;
+ 
+     if (nodename)
+         memcpy(node->name, nodename, CLUSTER_NAMELEN);
+@@ -2099,6 +2102,9 @@ static clusterNode *getNodeFromLinkAndMsg(clusterLink *link, clusterMsg *hdr) {
+  * processing lead to some inconsistency error (for instance a PONG
+  * received from the wrong sender ID). */
+ int clusterProcessPacket(clusterLink *link) {
++    if (p_do_count_network) {
++        myself->metric_cluster_packets_processed++;
++    }
+     clusterMsg *hdr = (clusterMsg*) link->rcvbuf;
+     uint32_t totlen = ntohl(hdr->totlen);
+     uint16_t type = ntohs(hdr->type);
+@@ -2787,6 +2793,14 @@ void clusterSendMessage(clusterLink *link, unsigned char *msg, size_t msglen) {
+     uint16_t type = ntohs(hdr->type);
+     if (type < CLUSTERMSG_TYPE_COUNT)
+         server.cluster->stats_bus_messages_sent[type]++;
++    
++    if (p_do_count_network) { 
++        struct timeval p_now;
++        gettimeofday(&p_now, NULL);
++        myself->metric_cluster_times[myself->metric_cluster_network_counter] = p_now.tv_sec + p_now.tv_usec /1000000.;
++        myself->metric_cluster_bytes_sent[myself->metric_cluster_network_counter] = msglen;
++        myself->metric_cluster_network_counter++;
++    }
+ }
+ 
+ /* Send a message to all the nodes that are part of the cluster having
+diff --git a/src/cluster.h b/src/cluster.h
+index f198f0f6d..335f8ffa7 100644
+--- a/src/cluster.h
++++ b/src/cluster.h
+@@ -112,7 +112,14 @@ typedef struct clusterNodeFailReport {
+     mstime_t time;             /* Time of the last report from this node. */
+ } clusterNodeFailReport;
+ 
++#define METRIC_NETWORK_COUNTER_SIZE 5000000
+ typedef struct clusterNode {
++    // Metrics
++    int metric_cluster_packets_processed;
++    int metric_cluster_network_counter;
++    size_t metric_cluster_bytes_sent[METRIC_NETWORK_COUNTER_SIZE];
++    double metric_cluster_times[METRIC_NETWORK_COUNTER_SIZE];
++
+     mstime_t ctime; /* Node object creation time. */
+     char name[CLUSTER_NAMELEN]; /* Node name, hex string, sha1-size */
+     int flags;      /* CLUSTER_NODE_... */
+diff --git a/src/commands.c b/src/commands.c
+index ea8493e9c..c121b879a 100644
+--- a/src/commands.c
++++ b/src/commands.c
+@@ -659,6 +659,20 @@ struct redisCommand CLUSTER_Subcommands[] = {
+ /* CLUSTER tips */
+ #define CLUSTER_tips NULL
+ 
++/********** NETWORKCOUNT ********************/
++
++/* NETWORKCOUNT history */
++#define NETWORKCOUNT_History NULL
++
++/* NETWORKCOUNT tips */
++#define NETWORKCOUNT_tips NULL
++
++/* NETWORKCOUNT argument table */
++struct redisCommandArg NETWORKCOUNT_Args[] = {
++{"message",ARG_TYPE_STRING,-1,NULL,NULL,NULL,CMD_ARG_OPTIONAL},
++{0}
++};
++
+ /********** READONLY ********************/
+ 
+ /* READONLY history */
+@@ -7152,6 +7166,7 @@ struct redisCommand redisCommandTable[] = {
+ /* cluster */
+ {"asking","Sent by cluster clients after an -ASK redirect","O(1)","3.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CLUSTER,ASKING_History,ASKING_tips,askingCommand,1,CMD_FAST,ACL_CATEGORY_CONNECTION},
+ {"cluster","A container for cluster commands","Depends on subcommand.","3.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CLUSTER,CLUSTER_History,CLUSTER_tips,NULL,-2,0,0,.subcommands=CLUSTER_Subcommands},
++{"networkcount","Count network packets","O(1)",NULL,CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CLUSTER,NETWORKCOUNT_History,NETWORKCOUNT_tips,networkCountCommand,-1,CMD_LOADING|CMD_STALE|CMD_FAST,ACL_CATEGORY_CONNECTION,.args=NETWORKCOUNT_Args},
+ {"readonly","Enables read queries for a connection to a cluster replica node","O(1)","3.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CLUSTER,READONLY_History,READONLY_tips,readonlyCommand,1,CMD_FAST|CMD_LOADING|CMD_STALE,ACL_CATEGORY_CONNECTION},
+ {"readwrite","Disables read queries for a connection to a cluster replica node","O(1)","3.0.0",CMD_DOC_NONE,NULL,NULL,COMMAND_GROUP_CLUSTER,READWRITE_History,READWRITE_tips,readwriteCommand,1,CMD_FAST|CMD_LOADING|CMD_STALE,ACL_CATEGORY_CONNECTION},
+ /* connection */
+diff --git a/src/commands/networkcount.json b/src/commands/networkcount.json
+new file mode 100644
+index 000000000..faddb32ef
+--- /dev/null
++++ b/src/commands/networkcount.json
+@@ -0,0 +1,24 @@
++{
++    "NETWORKCOUNT": {
++        "summary": "Count network packets",
++        "complexity": "O(1)",
++        "group": "cluster",
++        "arity": -1,
++        "function": "networkCountCommand",
++        "command_flags": [
++            "LOADING",
++            "STALE",
++            "FAST"
++        ],
++        "acl_categories": [
++            "CONNECTION"
++        ],
++        "arguments": [
++            {
++                "name": "message",
++                "type": "string",
++                "optional": true
++            }
++        ]
++    }
++}
+diff --git a/src/connection.c b/src/connection.c
+index f61ed2404..bae8f6c51 100644
+--- a/src/connection.c
++++ b/src/connection.c
+@@ -30,6 +30,11 @@
+ #include "server.h"
+ #include "connhelpers.h"
+ 
++int p_do_count_network = 0;
++int p_networkCounter = 0;
++size_t p_bytesSent[P_NETWORK_COUNTER_SIZE];
++double p_times[P_NETWORK_COUNTER_SIZE];
++
+ /* The connections module provides a lean abstraction of network connections
+  * to avoid direct socket and async event management across the Redis code base.
+  *
+diff --git a/src/connection.h b/src/connection.h
+index dad2e2fd6..54ca9fa51 100644
+--- a/src/connection.h
++++ b/src/connection.h
+@@ -33,7 +33,12 @@
+ 
+ #include <errno.h>
+ #include <sys/uio.h>
+-
++#include <sys/time.h>
++#define P_NETWORK_COUNTER_SIZE 5000000
++extern int p_do_count_network;
++extern int p_networkCounter;
++extern size_t p_bytesSent[P_NETWORK_COUNTER_SIZE];
++extern double p_times[P_NETWORK_COUNTER_SIZE];
+ #define CONN_INFO_LEN   32
+ 
+ struct aeEventLoop;
+@@ -141,6 +146,13 @@ static inline int connBlockingConnect(connection *conn, const char *addr, int po
+  * connGetState() to see if the connection state is still CONN_STATE_CONNECTED.
+  */
+ static inline int connWrite(connection *conn, const void *data, size_t data_len) {
++    if (p_do_count_network) {
++        struct timeval p_now;
++        gettimeofday(&p_now, NULL);
++        p_times[p_networkCounter] = p_now.tv_sec + p_now.tv_usec /1000000.;
++        p_bytesSent[p_networkCounter] = data_len;
++        p_networkCounter++;
++    }
+     return conn->type->write(conn, data, data_len);
+ }
+ 
+diff --git a/src/rdb.c b/src/rdb.c
+index 7a6ef88b5..1e8abe879 100644
+--- a/src/rdb.c
++++ b/src/rdb.c
+@@ -1425,6 +1425,15 @@ int rdbSave(int req, char *filename, rdbSaveInfo *rsi) {
+     }
+ 
+     /* Make sure data will not remain on the OS's output buffers */
++    
++    if (p_do_count_io) {
++        struct timeval p_now;
++        gettimeofday(&p_now, NULL);
++        p_timesWritten[p_ioCounterWritten] = p_now.tv_sec + p_now.tv_usec /1000000.;
++        p_bytesWritten[p_ioCounterWritten] = ftell(fp);
++        p_ioCounterWritten++;
++    }
++
+     if (fflush(fp)) { err_op = "fflush"; goto werr; }
+     if (fsync(fileno(fp))) { err_op = "fsync"; goto werr; }
+     if (fclose(fp)) { fp = NULL; err_op = "fclose"; goto werr; }
+@@ -3264,6 +3273,14 @@ int rdbLoad(char *filename, rdbSaveInfo *rsi, int rdbflags) {
+ 
+     retval = rdbLoadRio(&rdb,rdbflags,rsi);
+ 
++    if (p_do_count_io) {
++        struct timeval p_now;
++        gettimeofday(&p_now, NULL);
++        p_timesRead[p_ioCounterRead] = p_now.tv_sec + p_now.tv_usec /1000000.;
++        p_bytesRead[p_ioCounterRead] = sb.st_size;
++        p_ioCounterRead++;
++    }
++
+     fclose(fp);
+     stopLoading(retval==C_OK);
+     return retval;
+diff --git a/src/rio.c b/src/rio.c
+index bcda3767b..1511af8d7 100644
+--- a/src/rio.c
++++ b/src/rio.c
+@@ -55,6 +55,15 @@
+ #include "config.h"
+ #include "server.h"
+ 
++int p_do_count_io = 0;
++int p_ioCounterWritten = 0;
++size_t p_bytesWritten[P_IO_COUNTER_SIZE];
++double p_timesWritten[P_IO_COUNTER_SIZE];
++int p_ioCounterRead = 0;
++size_t p_bytesRead[P_IO_COUNTER_SIZE];
++double p_timesRead[P_IO_COUNTER_SIZE];
++
++
+ /* ------------------------- Buffer I/O implementation ----------------------- */
+ 
+ /* Returns 1 or 0 for success/failure. */
+diff --git a/src/rio.h b/src/rio.h
+index 51738366a..01d1981d2 100644
+--- a/src/rio.h
++++ b/src/rio.h
+@@ -45,6 +45,16 @@
+ #define RIO_TYPE_CONN (1<<2)
+ #define RIO_TYPE_FD (1<<3)
+ 
++#define P_IO_COUNTER_SIZE 5000000
++extern int p_do_count_io;
++extern int p_ioCounterWritten;
++extern size_t p_bytesWritten[P_IO_COUNTER_SIZE];
++extern double p_timesWritten[P_IO_COUNTER_SIZE];
++extern int p_ioCounterRead;
++extern size_t p_bytesRead[P_IO_COUNTER_SIZE];
++extern double p_timesRead[P_IO_COUNTER_SIZE];
++
++
+ struct _rio {
+     /* Backend functions.
+      * Since this functions do not tolerate short writes or reads the return
+diff --git a/src/server.c b/src/server.c
+index e1d1b316e..eb8778010 100644
+--- a/src/server.c
++++ b/src/server.c
+@@ -4295,7 +4295,31 @@ int finishShutdown(void) {
+         flock(server.cluster_config_file_lock_fd, LOCK_UN|LOCK_NB);
+     }
+ #endif /* __sun */
++    
++    FILE *fioWritten = fopen("io-write-all.csv", "a");
++    for (int i = 0; i < p_ioCounterWritten; i++) {
++        fprintf(fioWritten, "%zu,%f\n", p_bytesWritten[i], p_timesWritten[i]);
++    }
++    fclose(fioWritten);
++    FILE *fioRead = fopen("io-read-all.csv", "a");
++    for (int i = 0; i < p_ioCounterRead; i++) {
++        fprintf(fioRead, "%zu,%f\n", p_bytesRead[i], p_timesRead[i]);
++    }
++    fclose(fioRead);
++    FILE *fnetwork = fopen("network-all.csv", "a");
++    for (int i = 0; i < p_networkCounter; i++) {
++        fprintf(fnetwork, "%zu,%f\n", p_bytesSent[i], p_times[i]);
++    }
++    fclose(fnetwork);
++    FILE *fnetworkcluster = fopen("network-cluster.csv", "a");
++    for (int i = 0; i < server.cluster->myself->metric_cluster_network_counter; i++) {
++        fprintf(fnetwork, "%zu,%f\n", server.cluster->myself->metric_cluster_bytes_sent[i], server.cluster->myself->metric_cluster_times[i]);
++    }
++    fclose(fnetworkcluster);
+ 
++    FILE *fnetworksummary = fopen("network-summary.yaml", "a");
++    fprintf(fnetworksummary, "ClusterPacketsProcessed: %d\n", server.cluster->myself->metric_cluster_packets_processed);
++    fclose(fnetworksummary);
+ 
+     serverLog(LL_WARNING,"%s is now ready to exit, bye bye...",
+         server.sentinel_mode ? "Sentinel" : "Redis");
+@@ -4382,6 +4406,12 @@ void echoCommand(client *c) {
+     addReplyBulk(c,c->argv[1]);
+ }
+ 
++void networkCountCommand(client *c) {
++    p_do_count_network = 1;
++    p_do_count_io = 1;
++    addReplyBulkCBuffer(c,"Enabling NetworkCount",21);
++}
++
+ void timeCommand(client *c) {
+     struct timeval tv;
+ 
+@@ -6855,6 +6885,11 @@ int main(int argc, char **argv) {
+     int j;
+     char config_from_stdin = 0;
+ 
++    if (getenv("ENABLE_NETWORK_RECORDING")) {
++        p_do_count_network = 1;
++        p_do_count_io = 1;
++    }
++
+ #ifdef REDIS_TEST
+     if (argc >= 3 && !strcasecmp(argv[1], "test")) {
+         int flags = 0;
+diff --git a/src/server.h b/src/server.h
+index 82e4db938..a63abcbae 100644
+--- a/src/server.h
++++ b/src/server.h
+@@ -3290,6 +3290,7 @@ char *redisBuildIdString(void);
+ void authCommand(client *c);
+ void pingCommand(client *c);
+ void echoCommand(client *c);
++void networkCountCommand(client *c);
+ void commandCommand(client *c);
+ void commandCountCommand(client *c);
+ void commandListCommand(client *c);
+-- 
+2.30.2
+

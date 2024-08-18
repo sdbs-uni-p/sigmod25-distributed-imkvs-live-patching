@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+pipenv install
+
+cd ${SCRIPT_DIR}/redis-build-utils/
+./setup-kpatch
+

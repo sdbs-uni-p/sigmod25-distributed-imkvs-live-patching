@@ -1,0 +1,8 @@
+#!/usr/bin/env zsh
+
+source INPUT_BASE_DIRECTORY
+./exec-file-py --input-data \
+    $INPUT_BASE_DIRECTORY/synchronization-time-failover-idle/synchronization-time-failover-idle.duckdb \
+    $INPUT_BASE_DIRECTORY/synchronization-time-failover-snapshot-idle/synchronization-time-failover-snapshot-idle.duckdb \
+    --output $INPUT_BASE_DIRECTORY/output --plot plot-synchronization-time-failover-line.R
+

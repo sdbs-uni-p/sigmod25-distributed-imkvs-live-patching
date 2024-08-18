@@ -1,0 +1,69 @@
+#!/usr/bin/env zsh
+set -euvx
+
+SCRIPT_DIR=${0:a:h}
+
+amount=$1
+
+if [ $amount -le `ls ${SCRIPT_DIR}/patches | wc -l` ]; then
+    exit 0
+fi
+
+REDIS_BUILD=${SCRIPT_DIR}/build/redis
+GIT_PATCHES=${SCRIPT_DIR}/git-patches
+COMPILED_PATCHES=${SCRIPT_DIR}/compiled-patches
+FINAL_PATCHES=${SCRIPT_DIR}/patches
+
+if [ ! -d ${REDIS_BUILD} ]; then
+    mkdir -p ${REDIS_BUILD}
+    git clone https://github.com/redis/redis.git ${REDIS_BUILD}
+fi
+
+cd ${REDIS_BUILD}
+set +e
+git am --abort
+set -e
+git clean -xffd
+git reset --hard
+
+git tag -l | xargs git tag -d
+git fetch --tags
+
+git checkout 7.0.11
+git am -3 ${SCRIPT_DIR}/../redis-live-patch.patch
+git tag livepatch
+
+cd ${SCRIPT_DIR}
+rm -f commits
+rm -rf ${GIT_PATCHES}
+mkdir ${GIT_PATCHES}
+for i in `seq 1 $amount`; do
+    dst=${GIT_PATCHES}/patch-$i.patch
+    cp ${SCRIPT_DIR}/base.patch $dst 
+    if [ $i -ne 1 ]; then
+        # Use base.patch as very first version. So do not modify increment
+        sed -i "s|number + 1|number + $i|g" $dst
+        sed -i "s|number + 0|number + $((i-1))|g" $dst
+    fi
+    echo $dst
+
+    cd ${REDIS_BUILD}
+    git am -3 $dst
+    git tag livepatch-$i
+    cd ${SCRIPT_DIR}
+    echo livepatch-$i >> commits
+done
+
+cd ${SCRIPT_DIR}
+rm -rf ${COMPILED_PATCHES}
+mkdir ${COMPILED_PATCHES}
+
+cd ${SCRIPT_DIR}/../../redis-build-utils
+cat ${SCRIPT_DIR}/commits | xargs -I {} -n1 ./build -b ${SCRIPT_DIR}/build -n redis -c {} -o ${COMPILED_PATCHES}/{} 
+cat ${SCRIPT_DIR}/commits | xargs -I {} -n1 ./generate-patch -d ${COMPILED_PATCHES}/{} 
+
+cd ${SCRIPT_DIR}
+rm -rf ${FINAL_PATCHES}
+mkdir ${FINAL_PATCHES}
+cat ${SCRIPT_DIR}/commits | xargs -I {} -n1 cp ${COMPILED_PATCHES}/{}/patch--patch.o ${FINAL_PATCHES}/{}.o
+

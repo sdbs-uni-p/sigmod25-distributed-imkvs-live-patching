@@ -1,0 +1,33 @@
+build:
+  dir: "build"
+  git_dir_name: "redis"
+  output: "build-output"
+
+redis_cluster:
+  output: "cluster-output"
+  status_file: "cluster-status.yaml"
+
+benchmark:
+  output: "result"
+  dir: "memtier_benchmark"
+  taskset_start: 2
+  taskset_end: 46
+  taskset_step: 2
+  no_latency_recording: False
+  _iterations:
+    - name: "set __key__ __data__"
+      output_name: "set"
+    - name: "get __key__"
+      output_name: "get"
+  time_s: 150
+  idle_before: 0
+  max_memory_usage_gb: 150
+  clients: 10 # clients per thread
+  threads: 3
+  per_master: True
+  incr_key_only: True
+  dump_db_at_stop: False
+
+data:
+  max_memory_usage_gb: 0
+

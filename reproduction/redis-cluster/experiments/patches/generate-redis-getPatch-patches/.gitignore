@@ -1,0 +1,6 @@
+patch-*
+commits-*
+build/
+live-patch-*/
+patches-*/
+compiled-patches-*/

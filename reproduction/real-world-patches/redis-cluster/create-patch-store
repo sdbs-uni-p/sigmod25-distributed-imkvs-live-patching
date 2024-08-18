@@ -1,0 +1,171 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+function show_help() {
+    echo "Usage:
+    -c <commit-list>\t\tThe path to the commit list containg all commit hashes of successful commits.
+    -r <original-repository-dir>\tThe path to the DBMS git repository (already checked out on disk)
+    -p <git-patch-dir>\t\tThe directory containing the patches to apply to the git history.
+    -e\tExit the script when a migration fails.
+    --order-start-branch <branch-name>\tThe start branch of which the commits of <commit-list> should be ordered. This reduces overhead as neighbouring commits are tested instead of jumping around in the history.
+    --order-end-brahch <branch-name>\tThe end branch of which the commits of <commit-list> should be ordered.
+    "
+    exit 1
+}
+
+exit_on_failed_migration=false
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -c|--commit-list) patches_commit_list="$2"; shift ;;
+        -r|--repository-dir) original_repository_dir="$2"; shift ;;
+        -p|--git-patch-dir) git_patch_dir="$2"; shift ;;
+        -e|--exit-on-failed-migration) exit_on_failed_migration=true; ;;
+        --order-start-branch) order_start_branch="$2"; shift ;;
+        --order-end-branch) order_end_branch="$2"; shift ;;
+        *) "Unrecognized argument $2"; show_help ;;
+    esac
+    shift
+done
+
+
+if [ -z ${patches_commit_list} ] || \
+    [ -z ${original_repository_dir} ] || \
+    [ -z ${git_patch_dir} ]; then
+    show_help
+fi
+if [ ! -z ${order_start_branch} ] && [ -z ${order_end_branch} ] || [ ! -z ${order_end_branch} ] && [ -z ${order_start_branch} ]; then
+    echo "--order-start-branch is set, --order-end-branch must also be set (or vice versa)."
+    show_help
+fi
+
+patches_commit_list=`readlink -f ${patches_commit_list}`
+if [ ! -f ${patches_commit_list} ]; then
+    echo "Commit list containing the patchable commits is not a file: ${patches_commit_list}"
+    exit 1
+fi
+patchable_commits=(`cat ${patches_commit_list}`)
+
+original_repository_dir=`readlink -f ${original_repository_dir}`
+
+git_patch_dir=`readlink -f ${git_patch_dir}`
+if [ ! -d ${git_patch_dir} ]; then
+    echo "git patch dir is not a directory: ${git_patch_dir}"
+    exit 1
+fi
+git_patches=(${git_patch_dir}/*.patch)
+
+wfpatch_branch_prefix="wfpatch.patch-"
+
+patchable_commits=(`cat ${patches_commit_list}`)
+
+cd ${original_repository_dir}
+
+# If ordering is enabled, we should order the patchable_commits.
+# Otherwise, patchable_commits is in alphabetic order which leads to many jumps (and therefore bad performance)
+# for patch application. Also, many files have to be checked out, restored, ....
+if [ ! -z ${order_start_branch} ] && [ ! -z ${order_end_branch} ]; then
+    # Get all commits of the specified range
+    start_end_commits=(`git rev-list ${order_start_branch}..${order_end_branch}`)
+
+    patchable_commits_ordered=()
+    # Iterate over all commits of the specified range and order all patchable commits based on this order.
+    for order_commit in "${start_end_commits[@]}"; do
+        if [[ " ${patchable_commits[*]} " =~ " ${order_commit} " ]]; then
+            # This commit (of the full range) is also a patchable commit.
+            # Add it to the list of ordered commits (so all commits will be added in order)
+            patchable_commits_ordered+=(${order_commit})
+        fi
+    done
+
+    # The range was maybe toa short (patchable_commits may contain commits that are outside of the specified range).
+    # Add all remaining commits (without any order; just append them to the list).
+    for patchable_commit in "${patchable_commits[@]}"; do
+        if [[ ! " ${patchable_commits_ordered[*]} " =~ " ${patchable_commit} " ]]; then
+            # Commit is NOT contained in the ordered commits.
+            # So this is a commit that was outside of the predefined range.
+            # Add it to the list of ordered commits.
+            patchable_commits_ordered+=(${patchable_commit})
+        fi
+    done
+
+    # Just to be sure: Check if the ordered list and the original list of patchable commits are equal.
+    # So we can ensure that we did not miss any commit .
+    original="`printf "%s\n" "${patchable_commits[@]}" | sort`"
+    ordered="`printf "%s\n" "${patchable_commits_ordered[@]}" | sort`"
+    if [ "${original}" = "${ordered}" ]; then
+        # All commits could be ordered successfully. Assign the ordered list as new commits list
+        patchable_commits=("${patchable_commits_ordered[@]}")
+    fi
+fi
+
+for commit in "${patchable_commits[@]}"; do
+    wfpatch_branch_name=${wfpatch_branch_prefix}${commit}
+    # Check if name (branch/tag) already exists
+    if git rev-parse --verify ${wfpatch_branch_name} &> /dev/null; then
+        # WfPatch was already applied to this commit (branch already exists)
+        echo "${commit} - name already exists. Skipping."
+        continue
+    fi
+
+    echo "${commit} - applying patch..."    
+
+    # Patch can be created for ${commit}^..${commit}
+    # 1. Checkout previous commit
+    git checkout -f ${commit}^
+    # Cleanup repository
+    git clean -xffd && git submodule foreach --recursive git clean -xffd
+    git reset --hard
+    git submodule update --init --recursive
+
+    # Iterate over all git patches (a git patch adds the WfPatch functionality)
+    # and check if a patch can be applied.
+    applied_patch=
+    for git_patch in "${git_patches[@]}"; do
+        # 3. Try to apply changes of WfPatch
+        # Use am to apply a patch (patches are mail formatted)
+        if git am -3 ${git_patch}; then
+            # 4. Pick the current commit
+            if git cherry-pick ${commit}; then
+                # Patch can be applied without conflict
+                echo "${commit} - applied ${git_patch}"
+                applied_patch=${git_patch}
+                break
+            else
+                git cherry-pick --abort
+            fi
+        else
+            # Abort merge
+            git am --abort
+        fi
+    done
+    if [ ! -z ${applied_patch} ]; then
+        # Patch could be applied
+        # 5. Set name
+        applied_patch_name=`basename ${applied_patch}`
+        git tag -a ${wfpatch_branch_name} -m ${applied_patch_name}
+        #git branch ${wfpatch_branch_name}
+        echo "${commit} - successful"
+    else
+        if $exit_on_failed_migration; then
+            echo "Please apply a patch and resolve merge conflicts manually and add the patch to ${git_patch_dir}"
+            echo ${commit}
+
+            echo "Process:
+            1. cd into the mariadb repository (cd ${original_repository_dir}
+            2. git checkout -f ${commit}
+            3. git reset --hard HEAD~1
+            4. git am -3 ${git_patch_dir} (apply one of the patches of this directory)
+            5. Resolve conflicts manually
+            6. git add .
+            7. git am --continue
+            8. git format-patch HEAD^
+            9. mv <generated-git-patch> ${git_patch_dir} (name it properly)
+            10. Continue with this pipeline"
+            exit 1
+        fi
+    fi
+done
+
+echo "Finish"

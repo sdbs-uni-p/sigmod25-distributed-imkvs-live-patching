@@ -1,0 +1,14 @@
+#!/usr/bin/env zsh
+
+SCRIPT_DIR=${0:a:h}
+
+for pair in 3,1 5,2 7,3; do
+    IFS=',' read -r masters replicas <<< $pair
+
+    ${SCRIPT_DIR}/../../patch-benchmark/scripts/notify "Start Masters: $masters Replicas: $replicas"
+    execute $masters $replicas
+    ${SCRIPT_DIR}/../../patch-benchmark/scripts/notify "End Masters: $masters Replicas: $replicas"
+done
+
+${SCRIPT_DIR}/../../collect-results ${experiment_name}
+

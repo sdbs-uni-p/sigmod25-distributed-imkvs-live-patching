@@ -1,0 +1,21 @@
+name: "Redis Cluster-Benchmark - Patch"
+
+_reference:
+  - "config-common-patch.yaml"
+
+commit: "livepatch"
+
+patch_generation:
+  _iterations:
+    - patches: 8
+
+patch:
+  sleep_between_versions: 16
+  sleep_bias: 0.5
+
+data:
+  _iterations:
+    - max_memory_usage_gb: 0
+    - max_memory_usage_gb: 30
+# Use patch-benchmark to overwrite the configuration. E.g.
+# patch-benchmark ... --overwrite config: redis_cluster.config='cluster-configs/cluster-7-1.yaml'

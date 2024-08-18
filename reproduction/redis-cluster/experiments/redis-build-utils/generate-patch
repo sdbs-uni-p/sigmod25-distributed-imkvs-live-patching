@@ -1,0 +1,102 @@
+#!/usr/bin/env zsh
+set -e
+setopt extended_glob
+
+SCRIPT_DIR=${0:a:h}
+
+echo ">>> $0 <<<" | tee -a $LOG
+
+#############
+# ARGUMENTS #
+#############
+function show_help {
+    echo "Missing arguments! Arguments:
+    -d|--dir                    The directory containing the build and build-new directory. Patches will be stored inside this directory.
+    " | tee -a $LOG
+    exit 1
+}
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -d|--dir) dir="$2"; echo "-d|--dir $dir" | tee -a $LOG; shift ;;
+        *) echo "Unknown parameter passed: $1"; show_help ;;
+    esac
+    shift
+done
+
+if [ -z ${dir} ]; then
+    show_help
+fi
+
+if [ ! -d ${dir} ]; then
+    echo "-d|--dir doesn't exist: ${dir}" | tee -a $LOG
+    show_help
+fi
+dir=`readlink -f ${dir}`
+
+echo "Generating patch for ${dir}" | tee -a $LOG
+#############
+# CONSTANTS #
+#############
+old=${dir}/build
+new=${dir}/build-new
+
+diff=${dir}/diff-object-files
+old_diff=${diff}/build
+new_diff=${diff}/build-new
+
+mkdir -p ${old_diff} 
+mkdir -p ${new_diff} 
+
+if [ ! -d "$old" ]; then
+    error "Old commit directory doesn't exist: '$old'" | tee -a $LOG
+    exit 1
+fi
+if [ ! -d "$new" ]; then
+    error "New commit directory does't exist: '$new'" | tee -a $LOG
+    exit 1
+fi
+
+##################
+# GENERATE PATCH #
+##################
+
+typeset -a patch_args
+
+if ls ${dir}/patch--* > /dev/null 2>&1; then
+    echo "Patch already exists... Skipping" | tee -a $LOG
+    exit 0
+fi
+
+for o in ${new}/**/*.o; do
+    o=${o/#${new}}
+    if [ ! -f ${new}${o} ] || [ ! -f ${old}${o} ]; then
+        # One of the files does not exist. Skip these files...
+        continue
+    fi
+    if ! diff -q ${new}${o} ${old}${o} > /dev/null; then
+        echo "Patch: ${o}" | tee -a $LOG
+        patch_args+=(--obj ${old}${o} ${new}${o})
+
+        # Safe object file
+        old_diff_dest=${old_diff}${o}
+        mkdir -p `dirname ${old_diff_dest}`
+        cp ${old}${o} ${old_diff_dest}
+
+        new_diff_dest=${new_diff}${o}
+        mkdir -p `dirname ${new_diff_dest}`
+        cp ${new}${o} ${new_diff_dest}
+    fi
+done
+
+# Abort if no patches were found
+[ -z "$patch_args" ] && echo "No patches found" | tee -a $LOG && exit 1
+
+# Patches should be stored in $dir
+cd ${dir}
+
+echo "${SCRIPT_DIR}/create-patch --create-diff-object ${SCRIPT_DIR}/kpatch/kpatch-build/create-diff-object ${patch_args[@]} ${old}/src/redis-server 2>&1" | tee -a $LOG_PATCH
+
+${SCRIPT_DIR}/create-patch --create-diff-object ${SCRIPT_DIR}/kpatch/kpatch-build/create-diff-object "${patch_args[@]}" ${old}/src/redis-server 2>&1 | tee -a $LOG_PATCH
+
+echo "<<< $0 >>>" | tee -a $LOG

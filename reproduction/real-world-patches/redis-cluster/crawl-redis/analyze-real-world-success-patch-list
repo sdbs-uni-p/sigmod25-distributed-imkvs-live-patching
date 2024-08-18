@@ -1,0 +1,97 @@
+#!/usr/bin/env zsh
+
+patches_dir=$1
+if [ -z ${patches_dir} ] || [ ! -d ${patches_dir} ]; then
+    echo "Please specify the directory containing the patches subdirectory!"
+    exit 1
+fi
+
+output_file=real-world.commits.success
+if [ -f ${output_file} ] || [ -d ${output_file} ]; then
+    echo "The output file ${output_file} already exists or is a directory!"
+    exit 1
+fi
+
+touch ${output_file}
+
+string_lookup="INFO:root:[KP-DIFF] Success (all patches)"
+
+total_counter=0
+total_backend_counter=0
+build_fails=0
+release_only=0
+success=0
+empty_patches=0
+
+files_to_ignore=(redis-benchmark.o debug.o release.o commands.o redis-cli.o)
+skip_if_contains=(commands.o)
+for file in ${patches_dir}/*; do
+    ((total_counter++))
+    commit_hash=`basename $file`
+    if [ ! -d ${file}/diff-object-files ]; then
+        ((build_fails++))
+        continue
+    fi
+
+    modified_files=$(grep -oP '^diff --git a/\K[^ ]+' "${file}/patch.patch" | grep -E '\.c$|\.h$')
+    if [[ " ${modified_files[@]} " =~ "src/version.h" ]]; then
+        # version.h was modified. Ignore this commit..
+        continue
+    fi
+    if [[ " ${modified_files[@]} " =~ "src/redis-benchmark.c" ]]; then
+        continue
+    fi
+    if [[ " ${modified_files[@]} " =~ "src/redis-benchmark.h" ]]; then
+        continue
+    fi
+    if [[ " ${modified_files[@]} " =~ "src/redis-cli.c" ]]; then
+        continue
+    fi
+    if [[ " ${modified_files[@]} " =~ "src/redis-cli.h" ]]; then
+        continue
+    fi
+
+    # Check if the directory exists
+    dir="$file/diff-object-files/build/src"
+    files_in_dir=("${(@f)$(find "$dir" -type f -printf '%f\n')}")
+    skip_directory=true
+    for object_file in "${files_in_dir[@]}"; do
+        if [[ ! " ${files_to_ignore[@]} " =~ " ${object_file} " ]]; then
+            skip_directory=false
+        fi
+        if [[ " ${skip_if_contains[@]} " =~ " ${object_file} " ]]; then
+            skip_directory=true
+            break
+        fi
+    done
+    if $skip_directory; then
+        # Directory '$dir' contains only files from the ignore list. Skipping."
+        ((release_only++))
+        continue
+    fi
+    
+    ((total_backend_counter++))
+    if [ ! -f ${file}/create-patch ]; then
+        continue
+    fi
+
+    if [[ `ls ${file} | grep patch-- | wc -l` -lt 1 ]]; then
+        # No patches..
+        ((empty_patches++))
+        continue
+    fi
+
+    if grep -qF ${string_lookup} ${file}/create-patch; then
+        echo ${commit_hash} | tee -a ${output_file}
+        ((success++))
+    fi
+done
+
+echo "Total commits analyzed: ${total_counter}"
+echo "Total build fails: ${build_fails}"
+echo "Total release only: ${release_only}"
+
+echo ""
+echo "Total commits considered: ${total_backend_counter}"
+echo "Total empty patches: ${empty_patches}"
+echo "Success: ${success}"

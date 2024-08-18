@@ -1,0 +1,9 @@
+#!/usr/bin/env zsh
+
+source INPUT_BASE_DIRECTORY
+./exec-file-py --input-data \
+    $INPUT_BASE_DIRECTORY/synchronization-time-teaser-patch-idle/synchronization-time-teaser-patch-idle.duckdb \
+    $INPUT_BASE_DIRECTORY/synchronization-time-teaser-failover-idle/synchronization-time-teaser-failover-idle.duckdb \
+    $INPUT_BASE_DIRECTORY/synchronization-time-teaser-failover-snapshot-idle/synchronization-time-teaser-failover-snapshot-idle.duckdb \
+    --output $INPUT_BASE_DIRECTORY/output --plot plot-teaser-line.R
+

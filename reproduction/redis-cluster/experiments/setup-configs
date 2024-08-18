@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}/cluster-configs
+./generate_configs.py --start-masters 3 --end-masters 50 --start-replicas 1 --end-replicas 10

@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+pipenv run ./crawl.py
+
+cd ${SCRIPT_DIR}/crawl-redis
+./crawl ../crawled-commits.txt
+
+cd ${SCRIPT_DIR}
+./analyze-real-world-success-patch-list ${SCRIPT_DIR}/crawl-redis/output/patches
+
