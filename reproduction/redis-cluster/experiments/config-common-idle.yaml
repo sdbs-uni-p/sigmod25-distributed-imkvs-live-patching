@@ -1,0 +1,19 @@
+_reference:
+  - "config-common.yaml"
+
+benchmark:
+  dump_db_at_stop: False
+  no_latency_recording: True
+  idle_before: 60 # We wait until failover finished anyway..
+  time_s: 0 # No benchmark. Only idle time
+  _iterations:
+    - output_name: "get"
+      name: "get __key__"
+
+data:
+  _iterations:
+    - max_memory_usage_gb: 0
+    - max_memory_usage_gb: 100
+    - max_memory_usage_gb: 200
+
+

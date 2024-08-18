@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+set -u
+
+# Set CPU governor
+sudo cpupower frequency-set -g performance
+
+# Kill old instances
+pgrep -f redis-server | xargs -n1 kill -9
+sleep 3
+
+# Drop caches
+sudo sh -c "sync && echo 3 > /proc/sys/vm/drop_caches"
+

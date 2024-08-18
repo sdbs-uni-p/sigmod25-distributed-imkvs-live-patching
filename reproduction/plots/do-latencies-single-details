@@ -1,0 +1,10 @@
+#!/usr/bin/env zsh
+
+source INPUT_BASE_DIRECTORY
+./exec-file-py --input-data \
+    $INPUT_BASE_DIRECTORY/reference/reference.duckdb \
+    $INPUT_BASE_DIRECTORY/latencies-patch/latencies-patch.duckdb \
+    $INPUT_BASE_DIRECTORY/latencies-failover/latencies-failover.duckdb \
+    $INPUT_BASE_DIRECTORY/latencies-failover-snapshot/latencies-failover-snapshot.duckdb \
+    --output $INPUT_BASE_DIRECTORY/output --plot plot-latencies-single-details.R
+

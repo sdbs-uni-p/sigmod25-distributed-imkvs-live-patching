@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+for script in `ls | grep do-`; do
+    if [[ $script == `basename $0` ]]; then
+        continue
+    fi
+    echo "############################"
+    echo $script
+    time ./$script
+done
+echo "DONE! :-)"

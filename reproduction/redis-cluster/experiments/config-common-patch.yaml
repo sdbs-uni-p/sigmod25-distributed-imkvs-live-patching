@@ -1,0 +1,26 @@
+_reference:
+  - "config-common.yaml"
+
+patch_generation:
+  _iterations:
+    - patches: 100
+
+patch:
+  apply_patch_after_s: 15
+  sleep_between_versions: 0.5
+  sleep_bias: 0.0
+  reverse_version: False
+  distribution: "round_robin"
+  _iterations:
+    - method: "lazy"
+    - method: "eager"
+      #- method: "lazy_sync"
+      #- method: "eager_sync"
+  measure_vma: False
+  measure_pte: False
+  skip_patch_application: False
+  skip_patch_file: False
+  patch_group: null
+  apply_all_patches_at_once: True
+  patch_only_active: False
+  single_as_for_each_thread: False

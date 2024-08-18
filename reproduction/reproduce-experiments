@@ -1,0 +1,25 @@
+#!/usr/bin/env zsh
+
+set -evu
+
+SCRIPT_DIR=${0:a:h}
+
+# Perform all Redis-Cluster experiments
+cd ${SCRIPT_DIR}/redis-cluster/experiments
+./setup
+cd experiments
+./do-all
+
+# PostgreSQL real-world patches
+cd ${SCRIPT_DIR}/real-world-patches/postgresql
+./setup
+./do
+
+# Redis Cluster real-world patches
+cd ${SCRIPT_DIR}/real-world-patches/redis-cluster
+./setup
+cd ${SCRIPT_DIR}/real-world-patches/redis-cluster/crawl-redis
+./do
+cd ..
+./experiment
+

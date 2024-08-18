@@ -1,0 +1,127 @@
+#!/usr/bin/env zsh
+set -evx
+
+SCRIPT_DIR=${0:a:h}
+
+echo ">>> $0 <<<" | tee -a $LOG
+#############
+# ARGUMENTS #
+#############
+function show_help {
+    echo ""
+    echo "Usage: Required arguments: -b|--build-dir <root-build-dir> -n|--git-name <clone-repository-name> -c|--commit <git-commit> -o|--output-dir <output-directory> [-t|--threads <threads>]
+    -b|--build-dir      The root directory of the build directory. One directory with <clone-repository-name> is expected inside this directory.
+    -n|--git-name       The name of the cloned git repository on which this script should operate on
+    -c|--commit         The commit hash or tag for which the binaries (HEAD and HEAD^) are built. git checkout is used to get the commit.
+    -o|--output-dir     The directory in which the binary builds should be stored 
+    -t|--threads        The number of threads to be used
+
+    Why use this structure with the build-directory?
+    We use ccache to make compilation faster. By using ccache, we have to ensure a equal structure for every build. E.g. the build-dir should always have the same path to the git-directory for every build
+    " | tee -a $LOG
+    exit 1
+}
+
+install=true
+install_new=false
+compile_debug=false
+compile_with_git=false
+git_name=mariadb
+threads=$(nproc)
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -b|--build-dir) root_build_dir="$2"; echo "-b|--build-dir $root_build_dir" | tee -a $LOG; shift ;;
+        -n|--git-name) git_name="$2"; echo "-g|--git-name $git_name" | tee -a $LOG; shift ;;
+        -c|--commit) commit="$2"; echo "-c|--commit $commit" | tee -a $LOG; shift ;;
+        -o|--output-dir) output_dir="$2"; echo "-o|--output-dir $output_dir" | tee -a $LOG; shift ;;
+        -t|--threads) threads="$2"; echo "-t|--threads $threads" | tee -a $LOG; shift ;;
+        --install-new) install_new=true; ;;
+        *) echo "Unknown parameter passed: $1"; show_help ;;
+    esac
+    shift
+done
+
+if [ -z ${root_build_dir} ] \
+    || [ -z ${commit} ] \
+    || [ -z ${output_dir} ]; then
+    show_help
+fi
+
+if [ ! -d ${output_dir} ]; then
+    mkdir -p ${output_dir}
+fi
+
+root_build_dir=`readlink -f ${root_build_dir}`
+repository=${root_build_dir}/${git_name}
+
+output_dir=`readlink -f ${output_dir}`
+
+if [ ! -d ${repository} ]; then
+    echo " The git repository ${repository} doesn't exist.
+    The following structure is assumed:
+    <-b|--build-dir>
+    \t- <-n|--git-name>
+    \t- ...
+    "
+    show_help
+fi
+if [[ ! ${threads} =~ ^[0-9]+$ ]]; then
+    echo "-t|--threads must be a number: ${threads}"
+    show_help
+fi
+
+echo "Using ${threads} threads" | tee -a $LOG
+echo "Using ${root_build_dir} as root build directory" | tee -a $LOG
+echo "Commit: ${commit}" | tee -a $LOG
+#############
+# CONSTANTS #
+#############
+bin="${output_dir}/bin"
+old="${output_dir}/build"
+bin_new="${output_dir}/bin-new"
+new="${output_dir}/build-new"
+
+patch_file="${output_dir}/patch.patch"
+
+echo "Old: $old" | tee -a $LOG
+echo "New: $new" | tee -a $LOG
+echo "Bin: $bin" | tee -a $LOG
+echo "Patch: $patch_file" | tee -a $LOG
+
+#########
+# BUILD #
+#########
+function prepare_redis_git() {
+    local commit=$1
+
+    cd ${repository}
+
+    git checkout -f ${commit}
+
+    git clean -xffd 
+    git reset --hard
+}
+
+if [ ! -d ${old} ] && [ ! -d ${new} ]; then
+    echo "Compiling ${commit}" | tee -a $LOG
+
+    # BUILD OLD VERSION 
+    prepare_redis_git "${commit}^"
+    if [ $install_new = false ]; then 
+        make CFLAGS="-gz=none -ffunction-sections -fdata-sections" -j `nproc`
+        rm -rf ${old} && mkdir -p ${old}
+        rsync -a --delete ${repository}/ ${old}/
+    fi
+
+    # BUILD NEW VERSION
+    git checkout -f "${commit}"
+    make CFLAGS="-gz=none -ffunction-sections -fdata-sections" -j `nproc`
+    rm -rf ${new} && mkdir -p ${new}
+    rsync -a --delete ${repository}/ ${new}/
+
+    # Extract and store patch 
+    git format-patch -1 --stdout > ${patch_file}
+fi
+
+
+echo "<<< $0 >>>" | tee -a $LOG

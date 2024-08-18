@@ -1,0 +1,878 @@
+From 703859fb6d6f398bc22e538128755074496dbf20 Mon Sep 17 00:00:00 2001
+From: Michael Fruth <Michael.Fruth@uni-passau.de>
+Date: Tue, 29 Aug 2023 12:59:26 +0200
+Subject: [PATCH] Added single latency measurement
+
+---
+ .gdb_history                 |   1 +
+ client.cpp                   |   7 ++-
+ client.h                     |  18 +++++-
+ cluster_client.cpp           |  44 ++++++++++++-
+ cluster_client.h             |   1 +
+ deps/hdr_histogram/.dirstamp |   0
+ globals.h                    |   7 +++
+ memtier_benchmark.cpp        | 119 +++++++++++++++++++++++++++++++++--
+ memtier_benchmark.h          |   5 ++
+ obj_gen.cpp                  |  39 ++++++++++++
+ obj_gen.h                    |   9 +++
+ shard_connection.cpp         |  27 ++++++--
+ shard_connection.h           |   7 +++
+ 13 files changed, 268 insertions(+), 16 deletions(-)
+ create mode 100644 .gdb_history
+ create mode 100644 deps/hdr_histogram/.dirstamp
+ create mode 100644 globals.h
+
+diff --git a/.gdb_history b/.gdb_history
+new file mode 100644
+index 0000000..fc5962c
+--- /dev/null
++++ b/.gdb_history
+@@ -0,0 +1 @@
++bt
+diff --git a/client.cpp b/client.cpp
+index af1802d..f292f8b 100755
+--- a/client.cpp
++++ b/client.cpp
+@@ -64,7 +64,7 @@ bool client::setup_client(benchmark_config *config, abstract_protocol *protocol,
+ 
+     m_obj_gen = objgen->clone();
+     assert(m_obj_gen != NULL);
+-
++    
+     if (config->distinct_client_seed && config->randomize)
+         m_obj_gen->set_random_seed(config->randomize + config->next_client_idx);
+     else if (config->randomize)
+@@ -289,7 +289,7 @@ bool client::create_arbitrary_request(unsigned int command_index, struct timeval
+         }
+     }
+ 
+-    m_connections[conn_id]->send_arbitrary_command_end(command_index, &timestamp, cmd_size);
++    m_connections[conn_id]->send_arbitrary_command_end(command_index, &timestamp, cmd_size, m_key_buffer);
+     return true;
+ }
+ 
+@@ -596,7 +596,7 @@ client_group::~client_group(void)
+     m_base = NULL;
+ }
+ 
+-int client_group::create_clients(int num)
++int client_group::create_clients(int num, bool measure_latencies)
+ {
+     for (int i = 0; i < num; i++) {
+         client* c;
+@@ -607,6 +607,7 @@ int client_group::create_clients(int num)
+             c = new client(this);
+ 
+         assert(c != NULL);
++        c->set_measure_latencies(measure_latencies);
+ 
+         if (!c->initialized()) {
+             delete c;
+diff --git a/client.h b/client.h
+index cff0519..375949c 100755
+--- a/client.h
++++ b/client.h
+@@ -50,6 +50,15 @@ class data_object;
+ #define SET_CMD_IDX 0
+ #define GET_CMD_IDX 2
+ 
++class own_request_latency {
++    public:
++        double latency;
++        double time;
++        const char *port;
++        const char *key;
++};
++
++
+ enum get_key_response { not_available, available_for_conn, available_for_other_conn };
+ 
+ class client : public connections_manager {
+@@ -81,8 +90,13 @@ protected:
+     unsigned long long m_tot_wait_ops;            // Total number of WAIT ops
+ 
+     keylist *m_keylist;                           // used to construct multi commands
++    bool measure_latencies;                       // Whether single latencies should be measured.
+ 
+ public:
++    void set_measure_latencies(bool new_measure_latencies) {
++        measure_latencies = new_measure_latencies;
++    }
++    std::queue<own_request_latency*> own_requests;
+     client(client_group* group);
+     client(struct event_base *event_base, benchmark_config *config, abstract_protocol *protocol, object_generator *obj_gen);
+     virtual ~client();
+@@ -200,12 +214,12 @@ protected:
+     benchmark_config *m_config;
+     abstract_protocol* m_protocol;
+     object_generator* m_obj_gen;
+-    std::vector<client*> m_clients;
+ public:
++    std::vector<client*> m_clients;
+     client_group(benchmark_config *cfg, abstract_protocol *protocol, object_generator* obj_gen);
+     ~client_group();
+ 
+-    int create_clients(int count);
++    int create_clients(int count, bool measure_latencies);
+     int prepare(void);
+     void run(void);
+ 
+diff --git a/cluster_client.cpp b/cluster_client.cpp
+index ba17ad6..d1c141c 100644
+--- a/cluster_client.cpp
++++ b/cluster_client.cpp
+@@ -48,6 +48,7 @@
+ #include "memtier_benchmark.h"
+ #include "obj_gen.h"
+ #include "shard_connection.h"
++#include "sstream"
+ 
+ #define KEY_INDEX_QUEUE_MAX_SIZE 1000000
+ 
+@@ -102,6 +103,12 @@ static inline uint16_t crc16(const char *buf, size_t len) {
+ 
+ static uint32_t calc_hslot_crc16_cluster(const char *str, size_t length)
+ {
++    //if (str[0] == '{') {
++    //    const char *end = strchr(str, '}');
++    //    length = (int)(end - str) - 1;
++    //    uint32_t rv = (uint32_t) crc16(str + 1, length) & MAX_CLUSTER_HSLOT;
++    //    return rv;
++    //}
+     uint32_t rv = (uint32_t) crc16(str, length) & MAX_CLUSTER_HSLOT;
+     return rv;
+ }
+@@ -245,6 +252,24 @@ void cluster_client::handle_cluster_slots(protocol_response *r) {
+         memcpy(port, mbulk_port_el->value + 1, mbulk_port_el->value_len);
+         port[mbulk_port_el->value_len] = '\0';
+ 
++        if (global_only_ports) {
++            // Filter defined. We should filter ports!
++            std::istringstream iss(global_only_ports);
++            std::string token;
++            // Check if our port is defined in the whitelist
++            bool found = false;
++            while (iss >> token) {
++                // Compare ports; Port is in whiteliste, we do not ignore it!
++                if (token == port) {
++                    found = true;
++                    break;
++                }
++            }
++            if (!found) {
++                continue;
++            }
++        }
++
+         // check if connection already exist
+         shard_connection* sc = NULL;
+         unsigned int j;
+@@ -320,8 +345,14 @@ get_key_response cluster_client::get_key_for_conn(unsigned int command_index, un
+ 
+     // generate key
+     client::get_key_for_conn(command_index, conn_id, key_index);
++    
+ 
+-    unsigned int hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
++    unsigned int hslot;
++    if (m_obj_gen->get_key_tag()) {
++        hslot = calc_hslot_crc16_cluster(m_obj_gen->get_key_tag(), strlen(m_obj_gen->get_key_tag()));
++    } else {
++        hslot = calc_hslot_crc16_cluster(m_key_buffer, m_key_len);
++    }
+ 
+     // check if the key match for this connection
+     if (m_slot_to_shard[hslot] == conn_id) {
+@@ -466,6 +497,7 @@ void cluster_client::handle_ask(unsigned int conn_id, struct timeval timestamp,
+ 
+ void cluster_client::handle_response(unsigned int conn_id, struct timeval timestamp,
+                                      request *request, protocol_response *response) {
++    
+     if (response->is_error()) {
+         benchmark_debug_log("server %s handle response: %s\n",
+                             m_connections[conn_id]->get_readable_id(),
+@@ -482,6 +514,16 @@ void cluster_client::handle_response(unsigned int conn_id, struct timeval timest
+             return;
+         }
+     }
++    
++    if (measure_latencies) {
++        own_request_latency *r_l = new own_request_latency();
++        r_l->latency = ts_diff(request->m_sent_time, timestamp) / 1000.;
++        r_l->time = timestamp.tv_sec + timestamp.tv_usec /1000000.;
++        r_l->port = m_connections[conn_id]->get_port();
++        r_l->key = request->m_key;
++        //fprintf(stderr, "Latency [ms]: %f | Timestamp: %f | Port: %s\n", ts_diff(request->m_sent_time, timestamp)/1000., timestamp.tv_sec + timestamp.tv_usec /1000000., m_connections[conn_id]->get_port());
++        own_requests.push(r_l);
++    }
+ 
+     // continue with base class
+     client::handle_response(conn_id, timestamp, request, response);
+diff --git a/cluster_client.h b/cluster_client.h
+index c792f67..d184e22 100644
+--- a/cluster_client.h
++++ b/cluster_client.h
+@@ -21,6 +21,7 @@
+ 
+ #include <set>
+ #include "client.h"
++#include "globals.h"
+ 
+ typedef std::queue<unsigned long long> key_index_pool;
+ 
+diff --git a/deps/hdr_histogram/.dirstamp b/deps/hdr_histogram/.dirstamp
+new file mode 100644
+index 0000000..e69de29
+diff --git a/globals.h b/globals.h
+new file mode 100644
+index 0000000..d0c2337
+--- /dev/null
++++ b/globals.h
+@@ -0,0 +1,7 @@
++// globals.h
++#ifndef GLOBALS_H
++#define GLOBALS_H
++
++extern const char* global_only_ports;
++
++#endif // GLOBALS_H
+diff --git a/memtier_benchmark.cpp b/memtier_benchmark.cpp
+index 6eda00a..6738e7f 100755
+--- a/memtier_benchmark.cpp
++++ b/memtier_benchmark.cpp
+@@ -47,7 +47,9 @@
+ #include "JSON_handler.h"
+ #include "obj_gen.h"
+ #include "memtier_benchmark.h"
++#include "globals.h"
+ 
++const char* global_only_ports;
+ 
+ static int log_level = 0;
+ void benchmark_log_file_line(int level, const char *filename, unsigned int line, const char *fmt, ...)
+@@ -110,6 +112,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
+         "sni = %s\n"
+ #endif
+         "out_file = %s\n"
++        "out_file_result = %s\n"
++        "no_latency_recording = %u\n"
+         "client_stats = %s\n"
+         "run_count = %u\n"
+         "debug = %u\n"
+@@ -131,6 +135,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
+         "verify_only = %s\n"
+         "generate_keys = %s\n"
+         "key_prefix = %s\n"
++        "key_tag = %s\n"
++        "only_ports = %s\n"
+         "key_minimum = %llu\n"
+         "key_maximum = %llu\n"
+         "key_pattern = %s\n"
+@@ -159,6 +165,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
+         cfg->tls_sni,
+ #endif
+         cfg->out_file,
++        cfg->out_file_result,
++        cfg->no_latency_recording,
+         cfg->client_stats,
+         cfg->run_count,
+         cfg->debug,
+@@ -180,6 +188,8 @@ static void config_print(FILE *file, struct benchmark_config *cfg)
+         cfg->verify_only ? "yes" : "no",
+         cfg->generate_keys ? "yes" : "no",
+         cfg->key_prefix,
++        cfg->key_tag,
++        cfg->only_ports,
+         cfg->key_minimum,
+         cfg->key_maximum,
+         cfg->key_pattern,
+@@ -208,6 +218,8 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
+     jsonhandler->write_obj("address family"    ,"\"%s\"",      	cfg->resolution == AF_UNSPEC ? "Unspecified" : cfg->resolution == AF_INET ? "AF_INET" : "AF_INET6");
+     jsonhandler->write_obj("protocol"          ,"\"%s\"",      	get_protocol_name(cfg->protocol));
+     jsonhandler->write_obj("out_file"          ,"\"%s\"",      	cfg->out_file);
++    jsonhandler->write_obj("out_file_result"   ,"\"%s\"",      	cfg->out_file_result);
++    jsonhandler->write_obj("no_latency_recording"   ,"%u",      cfg->no_latency_recording);
+ #ifdef USE_TLS
+     jsonhandler->write_obj("tls"               ,"\"%s\"",      	cfg->tls ? "true" : "false");
+     jsonhandler->write_obj("cert"              ,"\"%s\"",      	cfg->tls_cert);
+@@ -237,6 +249,8 @@ static void config_print_to_json(json_handler * jsonhandler, struct benchmark_co
+     jsonhandler->write_obj("verify_only"       ,"\"%s\"",       cfg->verify_only ? "true" : "false");
+     jsonhandler->write_obj("generate_keys"     ,"\"%s\"",     	cfg->generate_keys ? "true" : "false");
+     jsonhandler->write_obj("key_prefix"        ,"\"%s\"",       cfg->key_prefix);
++    jsonhandler->write_obj("key_tag"           ,"\"%s\"",       cfg->key_tag);
++    jsonhandler->write_obj("only_ports"        ,"\"%s\"",       cfg->only_ports);
+     jsonhandler->write_obj("key_minimum"       ,"%11u",        	cfg->key_minimum);
+     jsonhandler->write_obj("key_maximum"       ,"%11u",        	cfg->key_maximum);
+     jsonhandler->write_obj("key_pattern"       ,"\"%s\"",       cfg->key_pattern);
+@@ -277,6 +291,10 @@ static void config_init_defaults(struct benchmark_config *cfg)
+     if (cfg->generate_keys || !cfg->data_import) {
+         if (!cfg->key_prefix)
+             cfg->key_prefix = "memtier-";
++        if (!cfg->key_tag)
++            cfg->key_tag = NULL;
++        if (!cfg->only_ports)
++            cfg->only_ports = NULL;
+         if (!cfg->key_maximum)
+             cfg->key_maximum = 10000000;
+     }
+@@ -374,6 +392,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+         o_data_verify,
+         o_verify_only,
+         o_key_prefix,
++        o_key_tag,
++        o_only_ports,
+         o_key_minimum,
+         o_key_maximum,
+         o_key_pattern,
+@@ -382,6 +402,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+         o_show_config,
+         o_hide_histogram,
+         o_print_percentiles,
++        o_incr_key_only,
+         o_distinct_client_seed,
+         o_randomize,
+         o_client_stats,
+@@ -404,6 +425,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+         o_tls_cacert,
+         o_tls_skip_verify,
+         o_tls_sni,
++        o_no_latency_recording,
+         o_hdr_file_prefix,
+         o_help
+     };
+@@ -425,6 +447,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+         { "sni",                        1, 0, o_tls_sni },
+ #endif
+         { "out-file",                   1, 0, 'o' },
++        { "out-file-result",            1, 0, 'O' },
++        { "no-latency-recording",       0, 0, o_no_latency_recording },
+         { "hdr-file-prefix",            1, 0, o_hdr_file_prefix },
+         { "client-stats",               1, 0, o_client_stats },
+         { "run-count",                  1, 0, 'x' },
+@@ -432,6 +456,7 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+         { "show-config",                0, 0, o_show_config },
+         { "hide-histogram",             0, 0, o_hide_histogram },
+         { "print-percentiles",          1, 0, o_print_percentiles },
++        { "incr-key-only",              0, 0, o_incr_key_only },
+         { "distinct-client-seed",       0, 0, o_distinct_client_seed },
+         { "randomize",                  0, 0, o_randomize },
+         { "requests",                   1, 0, 'n' },
+@@ -452,6 +477,8 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+         { "verify-only",                0, 0, o_verify_only },
+         { "generate-keys",              0, 0, o_generate_keys },
+         { "key-prefix",                 1, 0, o_key_prefix },
++        { "key-tag",                    1, 0, o_key_tag },
++        { "only-ports",                 1, 0, o_only_ports },
+         { "key-minimum",                1, 0, o_key_minimum },
+         { "key-maximum",                1, 0, o_key_maximum },
+         { "key-pattern",                1, 0, o_key_pattern },
+@@ -532,6 +559,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+                 case 'o':
+                     cfg->out_file = optarg;
+                     break;
++                case 'O':
++                    cfg->out_file_result = optarg;
++                    break;
++                case o_no_latency_recording:
++                    cfg->no_latency_recording = true;
++                    break;
+                 case o_hdr_file_prefix:
+                     cfg->hdr_prefix = optarg;
+                     break;
+@@ -562,6 +595,9 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+                         return -1;
+                     }
+                     break;
++                case o_incr_key_only:
++                    cfg->incr_key_only = 1;
++                    break;
+                 case o_distinct_client_seed:
+                     cfg->distinct_client_seed++;
+                     break;
+@@ -689,6 +725,12 @@ static int config_parse_args(int argc, char *argv[], struct benchmark_config *cf
+                 case o_key_prefix:
+                     cfg->key_prefix = optarg;
+                     break;
++                case o_key_tag:
++                    cfg->key_tag = optarg;
++                    break;
++                case o_only_ports:
++                    cfg->only_ports = optarg;
++                    break;
+                 case o_key_minimum:
+                     endptr = NULL;
+                     cfg->key_minimum = strtoull(optarg, &endptr, 10);
+@@ -909,6 +951,8 @@ void usage() {
+             "  -D, --debug                    Print debug output\n"
+             "      --client-stats=FILE        Produce per-client stats file\n"
+             "  -o, --out-file=FILE            Name of output file (default: stdout)\n"
++            "  -O, --out-file-result=FILE     Name of output file (default: stderr) for results\n"
++            "      --no-latency-recording     Do not record single latencies\n"
+             "      --json-out-file=FILE       Name of JSON output file, if not set, will not print to json\n"
+             "      --hdr-file-prefix=FILE     Prefix of HDR Latency Histogram output files, if not set, will not save latency histogram files\n"
+             "      --show-config              Print detailed configuration before running\n"
+@@ -929,6 +973,7 @@ void usage() {
+             "      --reconnect-interval=NUM   Number of requests after which re-connection is performed\n"
+             "      --multi-key-get=NUM        Enable multi-key get commands, up to NUM keys (default: 0)\n"
+             "      --select-db=DB             DB number to select, when testing a redis server\n"
++            "      --incr-key-only            Do not use a random key, instead just increment it for every request.\n"
+             "      --distinct-client-seed     Use a different random seed for each client\n"
+             "      --randomize                random seed based on timestamp (default is constant value)\n"
+             "\n"
+@@ -968,6 +1013,8 @@ void usage() {
+             "\n"
+             "Key Options:\n"
+             "      --key-prefix=PREFIX        Prefix for keys (default: \"memtier-\")\n"
++            "      --key-tag=tag              The sharding key used (default: \"-\")\n"
++            "      --only-ports=PORTS         Ignore all ports except the ones specified here. Use a whitespace separated list, e.g., \"7000 7001\". (default: \"-\")\n"
+             "      --key-minimum=NUMBER       Key ID minimum value (default: 0)\n"
+             "      --key-maximum=NUMBER       Key ID maximum value (default: 10000000)\n"
+             "      --key-pattern=PATTERN      Set:Get pattern (default: R:R)\n"
+@@ -1023,7 +1070,8 @@ struct cg_thread {
+ 
+     int prepare(void)
+     {
+-        if (m_cg->create_clients(m_config->clients) < (int) m_config->clients)
++        // 1 - no_latency_recording inverts the value
++        if (m_cg->create_clients(m_config->clients, 1-m_config->no_latency_recording) < (int) m_config->clients)
+             return -1;
+         return m_cg->prepare();
+     }
+@@ -1067,7 +1115,7 @@ void size_to_str(unsigned long int size, char *buf, int buf_len)
+     }
+ }
+ 
+-run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen)
++run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj_gen, FILE *outfile_result)
+ {
+     fprintf(stderr, "[RUN #%u] Preparing benchmark client...\n", run_id);
+ 
+@@ -1083,6 +1131,8 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
+         }
+         threads.push_back(t);
+     }
++    struct timeval start_benchmark;
++    gettimeofday(&start_benchmark, NULL);
+ 
+     // launch threads
+     fprintf(stderr, "[RUN #%u] Launching threads now...\n", run_id);
+@@ -1159,6 +1209,9 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
+     } while (active_threads > 0);
+ 
+     fprintf(stderr, "\n\n");
++    
++    struct timeval end_benchmark;
++    gettimeofday(&end_benchmark, NULL);
+ 
+     // join all threads back and unify stats
+     run_stats stats(cfg);
+@@ -1168,6 +1221,28 @@ run_stats run_benchmark(int run_id, benchmark_config* cfg, object_generator* obj
+         (*i)->m_cg->merge_run_stats(&stats);
+     }
+ 
++    fprintf(outfile_result, "start_time: %f\n", start_benchmark.tv_sec + start_benchmark.tv_usec /1000000.);
++    fprintf(outfile_result, "end_time: %f\n", end_benchmark.tv_sec + end_benchmark.tv_usec /1000000.);
++    // Header
++    fprintf(outfile_result, "thread_id,latency_ms,time,port,client_id,key\n");
++    int thread_id = 0;
++    for (std::vector<cg_thread*>::iterator i = threads.begin(); i != threads.end(); i++) {
++        int client_id = 0;
++        for (std::vector<client*>::iterator j = (*i)->m_cg->m_clients.begin(); j != (*i)->m_cg->m_clients.end(); j++) {
++            int counter = 0;
++            while(!(*j)->own_requests.empty()) {
++                counter += 1;
++                own_request_latency *r_l = (*j)->own_requests.front();
++                fprintf(outfile_result, "%d,%f,%f,%s,%d,%s\n", thread_id, r_l->latency, r_l->time, r_l->port, client_id, r_l->key);
++
++                (*j)->own_requests.pop();
++                delete r_l;
++            }
++            client_id += 1;
++        }
++        thread_id += 1;
++    }
++
+     // Do we need to produce client stats?
+     if (cfg->client_stats != NULL) {
+         unsigned int cg_id = 0;
+@@ -1352,7 +1427,9 @@ int main(int argc, char *argv[])
+         benchmark_error_log("error: getrlimit failed: %s\n", strerror(errno));
+         exit(1);
+     }
+-
++    if (cfg.only_ports) {
++        global_only_ports = cfg.only_ports;
++    }
+     if (cfg.unix_socket != NULL &&
+         (cfg.server != NULL || cfg.port > 0)) {
+         benchmark_error_log("error: UNIX domain socket and TCP cannot be used together.\n");
+@@ -1460,6 +1537,12 @@ int main(int argc, char *argv[])
+         obj_gen->set_random_data(cfg.random_data);
+     }
+ 
++    if (cfg.incr_key_only)
++        obj_gen->set_incr_key_only(cfg.threads * cfg.clients);
++    if (cfg.key_tag)
++        obj_gen->set_key_tag(cfg.key_tag);
++    
++    
+     if (cfg.select_db > 0 && !is_redis_protocol(cfg.protocol)) {
+         fprintf(stderr, "error: select-db can only be used with redis protocol.\n");
+         usage();
+@@ -1495,7 +1578,16 @@ int main(int argc, char *argv[])
+     }
+ 
+     if (!cfg.data_import || cfg.generate_keys) {
+-        obj_gen->set_key_prefix(cfg.key_prefix);
++        if (cfg.key_tag) {
++            std::string buf("{");
++            buf.append(cfg.key_tag);
++            buf.append("}");
++            buf.append(cfg.key_prefix);
++            obj_gen->set_key_prefix(buf.c_str());
++        } else {
++            obj_gen->set_key_prefix(cfg.key_prefix);
++        }
++
+         obj_gen->set_key_range(cfg.key_minimum, cfg.key_maximum);
+     }
+     if (cfg.key_stddev>0 || cfg.key_median>0) {
+@@ -1524,6 +1616,19 @@ int main(int argc, char *argv[])
+         outfile = stdout;
+     }
+ 
++    // Prepare output file result
++    FILE *outfile_result;
++    if (cfg.out_file_result != NULL) {
++        fprintf(stderr, "Writing results to %s...\n", cfg.out_file_result);
++        outfile_result = fopen(cfg.out_file_result, "w");
++        if (!outfile_result) {
++            perror(cfg.out_file_result);
++        }
++    } else {
++        fprintf(stderr, "Writing results to stderr\n");
++        outfile_result = stderr;
++    }
++
+     if (!cfg.verify_only) {
+         std::vector<run_stats> all_stats;
+         all_stats.reserve(cfg.run_count);
+@@ -1532,7 +1637,7 @@ int main(int argc, char *argv[])
+             if (run_id > 1)
+                 sleep(1);   // let connections settle
+ 
+-            run_stats stats = run_benchmark(run_id, &cfg, obj_gen);
++            run_stats stats = run_benchmark(run_id, &cfg, obj_gen, outfile_result);
+             all_stats.push_back(stats);
+             stats.save_hdr_full_run( &cfg,run_id );
+             stats.save_hdr_get_command( &cfg,run_id );
+@@ -1627,6 +1732,10 @@ int main(int argc, char *argv[])
+     if (outfile != stdout) {
+         fclose(outfile);
+     }
++    
++    if (outfile_result != stderr) {
++        fclose(outfile_result);
++    }
+ 
+     if (cfg.server_addr) {
+         delete cfg.server_addr;
+diff --git a/memtier_benchmark.h b/memtier_benchmark.h
+index c2f83f4..7cffaf1 100644
+--- a/memtier_benchmark.h
++++ b/memtier_benchmark.h
+@@ -57,12 +57,15 @@ struct benchmark_config {
+     int resolution;
+     enum PROTOCOL_TYPE protocol;
+     const char *out_file;
++    const char *out_file_result;
++    bool no_latency_recording;
+     const char *client_stats;
+     unsigned int run_count;
+     int debug;
+     int show_config;
+     int hide_histogram;
+     config_quantiles print_percentiles;
++    int incr_key_only;
+     int distinct_client_seed;
+     int randomize;
+     int next_client_idx;
+@@ -84,6 +87,8 @@ struct benchmark_config {
+     int verify_only;
+     int generate_keys;
+     const char *key_prefix;
++    const char *key_tag;
++    const char *only_ports;
+     unsigned long long key_minimum;
+     unsigned long long key_maximum;
+     double key_stddev;
+diff --git a/obj_gen.cpp b/obj_gen.cpp
+index d5a02b4..31802d7 100644
+--- a/obj_gen.cpp
++++ b/obj_gen.cpp
+@@ -26,6 +26,7 @@
+ #include <unistd.h>
+ #include <fcntl.h>
+ #include <math.h>
++#include <atomic>
+ 
+ #ifdef HAVE_ASSERT_H
+ #include <assert.h>
+@@ -34,6 +35,8 @@
+ #include "obj_gen.h"
+ #include "memtier_benchmark.h"
+ 
++static std::atomic<unsigned long long> m_current_object_counter = {0};
++
+ random_generator::random_generator()
+ {
+     set_seed(0);
+@@ -143,9 +146,12 @@ object_generator::object_generator(size_t n_key_iterators/*= OBJECT_GENERATOR_KE
+     m_data_size_type(data_size_unknown),
+     m_data_size_pattern(NULL),
+     m_random_data(false),
++    m_incr_key_only(false),
++    m_total_clients(0),
+     m_expiry_min(0),
+     m_expiry_max(0),
+     m_key_prefix(NULL),
++    m_key_tag(NULL),
+     m_key_min(0),
+     m_key_max(0),
+     m_key_stddev(0),
+@@ -165,9 +171,12 @@ object_generator::object_generator(const object_generator& copy) :
+     m_data_size(copy.m_data_size),
+     m_data_size_pattern(copy.m_data_size_pattern),
+     m_random_data(copy.m_random_data),
++    m_incr_key_only(copy.m_incr_key_only),
++    m_total_clients(copy.m_total_clients),
+     m_expiry_min(copy.m_expiry_min),
+     m_expiry_max(copy.m_expiry_max),
+     m_key_prefix(copy.m_key_prefix),
++    m_key_tag(copy.m_key_tag),
+     m_key_min(copy.m_key_min),
+     m_key_max(copy.m_key_max),
+     m_key_stddev(copy.m_key_stddev),
+@@ -184,6 +193,13 @@ object_generator::object_generator(const object_generator& copy) :
+     alloc_value_buffer(copy.m_value_buffer);
+ 
+     m_next_key.resize(copy.m_next_key.size(), 0);
++
++    // Initialize m_incr_key that is used for random data
++    if (m_incr_key_only) {
++        m_incr_key_min = m_key_min + ((m_key_max - m_key_min) / (long double) m_total_clients) * m_current_object_counter++;
++        m_incr_key_max = m_key_min + ((m_key_max - m_key_min) / (long double) m_total_clients) * m_current_object_counter -1;
++        m_incr_key = m_incr_key_min;
++    }
+ }
+ 
+ object_generator::~object_generator()
+@@ -210,6 +226,20 @@ void object_generator::set_random_seed(int seed)
+     m_random.set_seed(seed);
+ }
+ 
++void object_generator::set_incr_key_only(unsigned long long total_clients)
++{
++    m_incr_key_only = true;
++    m_total_clients = total_clients;
++}
++
++void object_generator::set_key_tag(const char *key_tag)
++{
++    m_key_tag = key_tag;
++}
++
++
++
++
+ void object_generator::alloc_value_buffer(void)
+ {
+     unsigned int size = 0;
+@@ -351,6 +381,12 @@ void object_generator::set_key_distribution(double key_stddev, double key_median
+ // return a random number between r_min and r_max
+ unsigned long long object_generator::random_range(unsigned long long r_min, unsigned long long  r_max)
+ {
++    if (m_incr_key_only) {
++        if (m_incr_key > m_incr_key_max)
++            m_incr_key = m_incr_key_min; // Reset
++        return m_incr_key++;
++    }
++
+     unsigned long long rn = m_random.get_random();
+     return (rn % (r_max - r_min + 1)) + r_min;
+ }
+@@ -418,6 +454,9 @@ data_object* object_generator::get_object(int iter)
+ const char* object_generator::get_key_prefix() {
+     return m_key_prefix;
+ }
++const char* object_generator::get_key_tag() {
++    return m_key_tag;
++}
+ 
+ const char* object_generator::get_value(unsigned long long key_index, unsigned int *len) {
+     // compute size
+diff --git a/obj_gen.h b/obj_gen.h
+index e1c1cc0..038f2c5 100644
+--- a/obj_gen.h
++++ b/obj_gen.h
+@@ -91,9 +91,15 @@ protected:
+     } m_data_size;
+     const char *m_data_size_pattern;
+     bool m_random_data;
++    bool m_incr_key_only;
++    unsigned long long m_incr_key;
++    unsigned long long m_incr_key_min;
++    unsigned long long m_incr_key_max;
++    unsigned long long m_total_clients;
+     unsigned int m_expiry_min;
+     unsigned int m_expiry_max;
+     const char *m_key_prefix;
++    const char *m_key_tag;
+     unsigned long long m_key_min;
+     unsigned long long m_key_max;
+     double m_key_stddev;
+@@ -129,15 +135,18 @@ public:
+     void set_data_size_pattern(const char* pattern);
+     void set_expiry_range(unsigned int expiry_min, unsigned int expiry_max);
+     void set_key_prefix(const char *key_prefix);
++    void set_key_tag(const char *key_tag);
+     void set_key_range(unsigned long long key_min, unsigned long long key_max);
+     void set_key_distribution(double key_stddev, double key_median);
+     void set_random_seed(int seed);
++    void set_incr_key_only(unsigned long long);
+ 
+     unsigned long long get_key_index(int iter);
+     virtual const char* get_key(int iter, unsigned int *len);
+     virtual data_object* get_object(int iter);
+ 
+     const char * get_key_prefix();
++    const char * get_key_tag();
+     const char* get_value(unsigned long long key_index, unsigned int *len);
+     unsigned int get_expiry();
+ };
+diff --git a/shard_connection.cpp b/shard_connection.cpp
+index b78ed31..765d67a 100644
+--- a/shard_connection.cpp
++++ b/shard_connection.cpp
+@@ -72,7 +72,7 @@ void cluster_client_event_handler(bufferevent *bev, short events, void *ctx)
+ }
+ 
+ request::request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys)
+-        : m_type(type), m_size(size), m_keys(keys)
++        : m_type(type), m_size(size), m_keys(keys), m_key(NULL)
+ {
+     if (sent_time != NULL)
+         m_sent_time = *sent_time;
+@@ -81,12 +81,25 @@ request::request(request_type type, unsigned int size, struct timeval* sent_time
+     }
+ }
+ 
++request::request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys, const char *key)
++        : request::request(type, size, sent_time, keys)
++{
++    m_key = strdup(key);
++}
++
+ arbitrary_request::arbitrary_request(size_t request_index, request_type type,
+                                      unsigned int size, struct timeval* sent_time) :
+         request(type, size, sent_time, 1),
+         index(request_index) {
+ }
+ 
++arbitrary_request::arbitrary_request(size_t request_index, request_type type,
++                                     unsigned int size, struct timeval* sent_time,
++                                     const char *key) :
++        request(type, size, sent_time, 1, key),
++        index(request_index) {
++}
++
+ verify_request::verify_request(request_type type,
+                                unsigned int size,
+                                struct timeval* sent_time,
+@@ -129,7 +142,7 @@ shard_connection::shard_connection(unsigned int id, connections_manager* conns_m
+     m_conns_manager = conns_man;
+     m_config = config;
+     m_event_base = event_base;
+-
++    
+     if (m_config->unix_socket) {
+         m_unix_sockaddr = (struct sockaddr_un *) malloc(sizeof(struct sockaddr_un));
+         assert(m_unix_sockaddr != NULL);
+@@ -477,14 +490,14 @@ void shard_connection::process_response(void)
+     }
+ }
+ 
+-void shard_connection::process_first_request() {
++void shard_connection::process_first_request() { 
+     m_conns_manager->set_start_time();
+     fill_pipeline();
+ }
+ 
+ 
+ void shard_connection::fill_pipeline(void)
+-{
++{ 
+     struct timeval now;
+     gettimeofday(&now, NULL);
+     while (!m_conns_manager->finished() && m_pipeline->size() < m_config->pipeline) {
+@@ -577,7 +590,7 @@ void shard_connection::send_set_command(struct timeval* sent_time, const char *k
+     cmd_size = m_protocol->write_command_set(key, key_len, value, value_len,
+                                              expiry, offset);
+ 
+-    push_req(new request(rt_set, cmd_size, sent_time, 1));
++    push_req(new request(rt_set, cmd_size, sent_time, 1, key));
+ }
+ 
+ 
+@@ -652,3 +665,7 @@ int shard_connection::send_arbitrary_command(const command_arg *arg, const char
+ void shard_connection::send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size) {
+     push_req(new arbitrary_request(command_index, rt_arbitrary, cmd_size, sent_time));
+ }
++
++void shard_connection::send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size, const char *key) {
++    push_req(new arbitrary_request(command_index, rt_arbitrary, cmd_size, sent_time, key));
++}
+diff --git a/shard_connection.h b/shard_connection.h
+index 9a06f73..22e33af 100644
+--- a/shard_connection.h
++++ b/shard_connection.h
+@@ -45,8 +45,10 @@ struct request {
+     struct timeval m_sent_time;
+     unsigned int m_size;
+     unsigned int m_keys;
++    const char *m_key;
+ 
+     request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys);
++    request(request_type type, unsigned int size, struct timeval* sent_time, unsigned int keys, const char *key);
+     virtual ~request(void) {}
+ };
+ 
+@@ -55,6 +57,9 @@ struct arbitrary_request : public request {
+ 
+     arbitrary_request(size_t request_index, request_type type,
+                       unsigned int size, struct timeval* sent_time);
++    arbitrary_request(size_t request_index, request_type type,
++                      unsigned int size, struct timeval* sent_time, 
++                      const char *key);
+     virtual ~arbitrary_request(void) {}
+ };
+ 
+@@ -102,6 +107,7 @@ public:
+     int send_arbitrary_command(const command_arg *arg);
+     int send_arbitrary_command(const command_arg *arg, const char *val, int val_len);
+     void send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size);
++    void send_arbitrary_command_end(size_t command_index, struct timeval* sent_time, int cmd_size, const char *key);
+ 
+     void set_cluster_slots() {
+         m_cluster_slots = setup_none;
+@@ -150,6 +156,7 @@ private:
+     void handle_event(short evtype);
+ 
+     unsigned int m_id;
++    bool ignore_shard;
+     connections_manager* m_conns_manager;
+     benchmark_config* m_config;
+ 
+-- 
+2.30.2
+

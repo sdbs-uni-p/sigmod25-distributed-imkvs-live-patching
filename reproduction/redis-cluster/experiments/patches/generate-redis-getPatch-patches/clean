@@ -1,0 +1,14 @@
+#!/usr/bin/env zsh
+
+set -uv
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+rm -rf build 
+rm -rf compiled-patches-*
+rm -rf git-patches-*
+rm -rf patches-*
+rm -rf commits-*
+
+exit 0 ## Success

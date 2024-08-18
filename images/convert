@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+for pdf in *.pdf; do
+    png="$(basename "$pdf" .pdf).png"
+    convert -density 300 $pdf -quality 100 $png
+done

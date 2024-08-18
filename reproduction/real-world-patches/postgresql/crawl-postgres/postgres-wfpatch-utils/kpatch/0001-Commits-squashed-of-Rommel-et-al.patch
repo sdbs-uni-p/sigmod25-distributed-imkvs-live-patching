@@ -1,0 +1,900 @@
+From 47a4ade3bc606ea5897a5108543a63d185785f68 Mon Sep 17 00:00:00 2001
+From: Florian Rommel <flo@usrdev.de>
+Date: Tue, 28 Apr 2020 15:13:45 +0200
+Subject: [PATCH 1/2] Commits squashed of Rommel et al.
+
+Disable checks concerning profiling and fentry
+
+waitfree-test
+
+Ignore TLS symbols
+
+Avoid the Module.symvers file and use undfined symbols for exported instead
+
+remove debug output
+
+Also install create-diff-object
+
+We do not require function profiling
+
+Treat UNIQUE symbols as GLOBAL symbols
+
+Fixes for userspace: now it works with 9 openldap patches.
+
+kpatch-elf: save filename
+
+bad relocations: relocations between rodata and .text of the same
+function are ok
+
+https://github.com/dynup/kpatch/issues/618
+
+kpatch: last changes for osdi
+---
+ kpatch-build/Makefile             |   3 +
+ kpatch-build/create-diff-object.c | 140 +++++++++++++++++----
+ kpatch-build/kpatch-elf.c         |  17 +--
+ kpatch-build/kpatch-elf.h         |   1 +
+ kpatch-build/lookup.c             | 203 ++++++++++++++----------------
+ waitfree-test/Makefile            |  24 ++++
+ waitfree-test/obj1-new.c          |  25 ++++
+ waitfree-test/obj1-old.c          |  25 ++++
+ waitfree-test/obj2.c              |   3 +
+ 9 files changed, 298 insertions(+), 143 deletions(-)
+ create mode 100644 waitfree-test/Makefile
+ create mode 100644 waitfree-test/obj1-new.c
+ create mode 100644 waitfree-test/obj1-old.c
+ create mode 100644 waitfree-test/obj2.c
+
+diff --git a/kpatch-build/Makefile b/kpatch-build/Makefile
+index 7505e07..d5b9fac 100644
+--- a/kpatch-build/Makefile
++++ b/kpatch-build/Makefile
+@@ -41,10 +41,13 @@ install: all
+ 	$(INSTALL) $(TARGETS) kpatch-gcc $(LIBEXECDIR)
+ 	$(INSTALL) -d $(BINDIR)
+ 	$(INSTALL) kpatch-build $(BINDIR)
++	$(INSTALL) create-diff-object $(BINDIR)
++
+ 
+ uninstall:
+ 	$(RM) -R $(LIBEXECDIR)
+ 	$(RM) $(BINDIR)/kpatch-build
++	$(RM) $(BINDIR)/create-diff-object
+ 
+ clean:
+ 	$(RM) $(TARGETS) *.{o,d} insn/*.{o,d} gcc-plugins/*.{so,d}
+diff --git a/kpatch-build/create-diff-object.c b/kpatch-build/create-diff-object.c
+index 94f15bc..4f30365 100644
+--- a/kpatch-build/create-diff-object.c
++++ b/kpatch-build/create-diff-object.c
+@@ -92,6 +92,10 @@ struct special_section {
+ 
+ static int is_bundleable(struct symbol *sym)
+ {
++    if (sym->sym.st_shndx == SHN_COMMON) {
++        return 0;
++    }
++
+ 	if (sym->type == STT_FUNC &&
+ 	    !strncmp(sym->sec->name, ".text.",6) &&
+ 	    !strcmp(sym->sec->name + 6, sym->name))
+@@ -109,6 +113,7 @@ static int is_bundleable(struct symbol *sym)
+ 	    !strcmp(sym->sec->name + 10, sym->name))
+ 		return 1;
+ 
++
+ 	if (sym->type == STT_OBJECT &&
+ 	   !strncmp(sym->sec->name, ".data.",6) &&
+ 	   !strcmp(sym->sec->name + 6, sym->name))
+@@ -294,7 +299,7 @@ static void kpatch_detect_child_functions(struct kpatch_elf *kelf)
+ 
+ static bool is_dynamic_debug_symbol(struct symbol *sym)
+ {
+-	if (sym->type == STT_OBJECT && !strcmp(sym->sec->name, "__verbose"))
++	if (sym->type == STT_OBJECT && sym->sec && !strcmp(sym->sec->name, "__verbose"))
+ 		return true;
+ 	if (sym->type == STT_SECTION && !strcmp(sym->name, "__verbose"))
+ 		return true;
+@@ -315,12 +320,20 @@ static int is_special_static(struct symbol *sym)
+ 		"__warned.",
+ 		"__func__.",
+ 		"__FUNCTION__.",
++        "__PRETTY_FUNCTION__.",
+ 		"_rs.",
+ 		"CSWTCH.",
+ 		NULL,
+ 	};
+ 	char **prefix;
+ 
++    static char *postfixes[] = {
++		"__FUNCTION__",
++        "__PRETTY_FUNCTION__",
++		NULL,
++	};
++    char **postfix;
++
+ 	if (!sym)
+ 		return 0;
+ 
+@@ -344,6 +357,15 @@ static int is_special_static(struct symbol *sym)
+ 		if (!strncmp(sym->name, *prefix, strlen(*prefix)))
+ 			return 1;
+ 
++    size_t len = strlen(sym->name);
++    for (postfix = postfixes; *postfix; postfix++) {
++        size_t len_postfix = strlen(*postfix);
++        if (len < len_postfix) continue;
++        continue;
++		if (!strcmp(sym->name+len-len_postfix, *postfix))
++			return 1;
++    }
++
+ 	return 0;
+ }
+ 
+@@ -820,7 +842,8 @@ static void kpatch_compare_correlated_symbol(struct symbol *sym)
+ 		DIFF_FATAL("object size mismatch: %s", sym1->name);
+ 
+ 	if (sym1->sym.st_shndx == SHN_UNDEF ||
+-	     sym1->sym.st_shndx == SHN_ABS)
++	     sym1->sym.st_shndx == SHN_ABS ||
++         sym1->sym.st_shndx == SHN_COMMON)
+ 		sym1->status = SAME;
+ 
+ 	/*
+@@ -889,7 +912,7 @@ static void kpatch_correlate_section(struct section *sec1, struct section *sec2)
+ 		__kpatch_correlate_section(sec1->base, sec2->base);
+ 		sec1 = sec1->base;
+ 		sec2 = sec2->base;
+-	} else if (sec1->rela) {
++	} else if (sec1->rela && sec2->rela) {
+ 		__kpatch_correlate_section(sec1->rela, sec2->rela);
+ 	}
+ 
+@@ -1566,11 +1589,11 @@ static void kpatch_check_func_profiling_calls(struct kpatch_elf *kelf)
+ 		if (sym->type != STT_FUNC || sym->status != CHANGED ||
+ 		    (sym->parent && sym->parent->status == CHANGED))
+ 			continue;
+-		if (!sym->twin->has_func_profiling) {
+-			log_normal("function %s has no fentry/mcount call, unable to patch\n",
+-				   sym->name);
+-			errs++;
+-		}
++		//if (!sym->twin->has_func_profiling) {
++		//	log_normal("function %s has no fentry/mcount call, unable to patch\n",
++		//		   sym->name);
++		//	errs++;
++		//}
+ 	}
+ 
+ 	if (errs)
+@@ -1613,7 +1636,7 @@ static void kpatch_verify_patchability(struct kpatch_elf *kelf)
+ 		}
+ 	}
+ 
+-	if (errs)
++	if (errs && getenv("FORCE") == NULL)
+ 		DIFF_FATAL("%d unsupported section change(s)", errs);
+ }
+ 
+@@ -1840,6 +1863,13 @@ static void kpatch_migrate_symbols(struct list_head *src,
+ 	}
+ }
+ 
++static int section_compare_offset(const void *a, const void*b){
++    struct section * sec1 = *(struct section **)a;
++    struct section * sec2 = *(struct section **)b;
++
++    return (int)(sec1->sh.sh_offset - sec2->sh.sh_offset);
++}
++
+ static void kpatch_migrate_included_elements(struct kpatch_elf *kelf, struct kpatch_elf **kelfout)
+ {
+ 	struct section *sec, *safesec;
+@@ -1855,17 +1885,40 @@ static void kpatch_migrate_included_elements(struct kpatch_elf *kelf, struct kpa
+ 	INIT_LIST_HEAD(&out->symbols);
+ 	INIT_LIST_HEAD(&out->strings);
+ 
++    // In order to not break jump tables, which use inter-section
++    // relative offsets, we dump the sections from the original elf
++    // sorted by their file-relative offset into the patch file.
++    
++    unsigned section_count = 0;
++    list_for_each_entry_safe(sec, safesec, &kelf->sections, list) {
++		if (!sec->include)
++			continue;
++        section_count ++;
++    }
++    
++    struct section *sections[section_count];
++    section_count = 0;
++
+ 	/* migrate included sections from kelf to out */
+ 	list_for_each_entry_safe(sec, safesec, &kelf->sections, list) {
+ 		if (!sec->include)
+ 			continue;
+ 		list_del(&sec->list);
+-		list_add_tail(&sec->list, &out->sections);
++        sections[section_count++] = sec;
+ 		sec->index = 0;
+ 		if (!is_rela_section(sec) && sec->secsym && !sec->secsym->include)
+ 			/* break link to non-included section symbol */
+ 			sec->secsym = NULL;
+ 	}
++    printf("Included %d sections\n", section_count);
++    qsort(sections, section_count, sizeof(struct section *),
++          section_compare_offset);
++    for (unsigned i = 0; i < section_count; i++) {
++        sec = sections[i];
++        list_add_tail(&sec->list, &out->sections);
++    }
++    
++    
+ 
+ 	/* migrate included symbols from kelf to out */
+ 	list_for_each_entry_safe(sym, safesym, &kelf->symbols, list) {
+@@ -2466,6 +2519,7 @@ static void kpatch_check_relocations(struct kpatch_elf *kelf)
+ 	struct rela *rela;
+ 	struct section *sec;
+ 	Elf_Data *sdata;
++    bool jump_table_msg = false;
+ 
+ 	list_for_each_entry(sec, &kelf->sections, list) {
+ 		if (!is_rela_section(sec))
+@@ -2473,10 +2527,32 @@ static void kpatch_check_relocations(struct kpatch_elf *kelf)
+ 		list_for_each_entry(rela, &sec->relas, list) {
+ 			if (rela->sym->sec) {
+ 				sdata = rela->sym->sec->data;
+-				if (rela->addend > (long)sdata->d_size) {
+-					ERROR("out-of-range relocation %s+%lx in %s", rela->sym->sec->name,
+-							rela->addend, sec->name);
+-				}
++                // Sometimes tehre are broken relocations
++                if (rela->addend > (long)sdata->d_size) {
++                    // We can ignore out-of-range relocations between
++                    // the .rodata and the .text section of a
++                    // function. Such bad relocations happen on jump tables.
++                    char *target = rela->sym->sec->name;
++                    char *modify = sec->base->name;
++                    if (!strncmp(target, ".text", 5)
++                        && !strncmp(modify, ".rodata", 7)
++                        && !strcmp(target + 5, modify + 7)) {
++                        if (!jump_table_msg) {
++                            printf("[%s] Jump table in %s\n",
++                                   kelf->name,
++                                   sec->base->name
++                                );
++                            jump_table_msg = true;
++                        }
++                        continue;
++                    }
++
++                    // otherwise (no jump table)
++                    ERROR("[%s] out-of-range relocation %s+%lx in %s",
++                          kelf->name,
++                          rela->sym->sec->name,
++                          rela->addend, sec->name);
++                }
+ 			}
+ 		}
+ 	}
+@@ -2504,7 +2580,7 @@ static void kpatch_include_debug_sections(struct kpatch_elf *kelf)
+ 		if (!is_rela_section(sec) || !is_debug_section(sec))
+ 			continue;
+ 		list_for_each_entry_safe(rela, saferela, &sec->relas, list)
+-			if (!rela->sym->sec->include)
++			if (rela->sym->sec && !rela->sym->sec->include)
+ 				list_del(&rela->list);
+ 	}
+ }
+@@ -2958,7 +3034,7 @@ static bool need_dynrela(struct lookup_table *table, const struct rela *rela)
+ 	 * Allow references to core module symbols to remain as normal
+ 	 * relas.  They should be exported.
+ 	 */
+-	if (kpatch_is_core_module_symbol(rela->sym->name))
++    if (kpatch_is_core_module_symbol(rela->sym->name))
+ 		return false;
+ 
+ 	if (rela->sym->sec) {
+@@ -3016,6 +3092,7 @@ static bool need_dynrela(struct lookup_table *table, const struct rela *rela)
+ 		 * The symbol is (formerly) local.  Use a dynrela to access the
+ 		 * original version of the symbol in the patched object.
+ 		 */
++
+ 		return true;
+ 	}
+ 
+@@ -3111,6 +3188,9 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 			/* upper bound on number of kpatch relas and symbols */
+ 			nr++;
+ 
++            if (!rela->sym->name)
++                continue;
++
+ 			/*
+ 			 * We set 'need_dynrela' here in the first pass because
+ 			 * the .toc section's 'need_dynrela' values are
+@@ -3122,8 +3202,10 @@ static void kpatch_create_intermediate_sections(struct kpatch_elf *kelf,
+ 			 * internal symbol function pointer check which is done
+ 			 * via .toc indirection in need_dynrela().
+ 			 */
+-			if (need_dynrela(table, rela))
++			if (need_dynrela(table, rela)) {
++                // printf("Need dynrela for %s\n", rela->sym->name);
+ 				toc_rela(rela)->need_dynrela = 1;
++            }
+ 		}
+ 	}
+ 
+@@ -3322,9 +3404,10 @@ static void kpatch_create_callbacks_objname_rela(struct kpatch_elf *kelf, char *
+ 	}
+ }
+ 
+-#ifdef __powerpc64__
+-void kpatch_create_mcount_sections(struct kpatch_elf *kelf) { }
+-#else
++#if 0
++// def __powerpc64__ 
++// void kpatch_create_mcount_sections(struct kpatch_elf *kelf) { }
++// #else
+ /*
+  * This function basically reimplements the functionality of the Linux
+  * recordmcount script, so that patched functions can be recognized by ftrace.
+@@ -3630,9 +3713,15 @@ int main(int argc, char *argv[])
+ 	kpatch_check_program_headers(kelf_base->elf);
+ 	kpatch_check_program_headers(kelf_patched->elf);
+ 
++
++    // kpatch_check_relocations(kelf_base);
++    // kpatch_check_relocations(kelf_patched);
++
++
+ 	kpatch_bundle_symbols(kelf_base);
+ 	kpatch_bundle_symbols(kelf_patched);
+ 
++
+ 	kpatch_detect_child_functions(kelf_base);
+ 	kpatch_detect_child_functions(kelf_patched);
+ 
+@@ -3656,6 +3745,7 @@ int main(int argc, char *argv[])
+ 	kpatch_replace_sections_syms(kelf_base);
+ 	kpatch_replace_sections_syms(kelf_patched);
+ 
++
+ 	kpatch_correlate_elfs(kelf_base, kelf_patched);
+ 	kpatch_correlate_static_local_variables(kelf_base, kelf_patched);
+ 
+@@ -3670,6 +3760,7 @@ int main(int argc, char *argv[])
+ 	kpatch_elf_teardown(kelf_base);
+ 	kpatch_elf_free(kelf_base);
+ 
++
+ 	kpatch_mark_ignored_functions_same(kelf_patched);
+ 	kpatch_mark_ignored_sections_same(kelf_patched);
+ 
+@@ -3678,14 +3769,17 @@ int main(int argc, char *argv[])
+ 	callbacks_exist = kpatch_include_callback_elements(kelf_patched);
+ 	kpatch_include_force_elements(kelf_patched);
+ 	new_globals_exist = kpatch_include_new_globals(kelf_patched);
+-	kpatch_include_debug_sections(kelf_patched);
++
++
++    kpatch_include_debug_sections(kelf_patched);
+ 
+ 	kpatch_process_special_sections(kelf_patched, lookup);
+ 
++
+ 	kpatch_print_changes(kelf_patched);
+ 	kpatch_dump_kelf(kelf_patched);
+ 
+-	kpatch_verify_patchability(kelf_patched);
++    kpatch_verify_patchability(kelf_patched);
+ 
+ 	if (!num_changed && !new_globals_exist) {
+ 		if (callbacks_exist)
+@@ -3723,7 +3817,7 @@ int main(int argc, char *argv[])
+ 	kpatch_create_callbacks_objname_rela(kelf_out, parent_name);
+ 	kpatch_build_strings_section_data(kelf_out);
+ 
+-	kpatch_create_mcount_sections(kelf_out);
++	// kpatch_create_mcount_sections(kelf_out);
+ 
+ 	/*
+ 	 *  At this point, the set of output sections and symbols is
+diff --git a/kpatch-build/kpatch-elf.c b/kpatch-build/kpatch-elf.c
+index 377dc7f..6f44159 100644
+--- a/kpatch-build/kpatch-elf.c
++++ b/kpatch-build/kpatch-elf.c
+@@ -321,7 +321,7 @@ void kpatch_create_symbol_list(struct kpatch_elf *kelf)
+ static void kpatch_find_func_profiling_calls(struct kpatch_elf *kelf)
+ {
+ 	struct symbol *sym;
+-	struct rela *rela;
++	/* struct rela *rela; */
+ 	list_for_each_entry(sym, &kelf->symbols, list) {
+ 		if (sym->type != STT_FUNC || !sym->sec || !sym->sec->rela)
+ 			continue;
+@@ -333,13 +333,13 @@ static void kpatch_find_func_profiling_calls(struct kpatch_elf *kelf)
+ 			}
+ 		}
+ #else
+-		rela = list_first_entry(&sym->sec->rela->relas, struct rela,
+-					list);
+-		if ((rela->type != R_X86_64_NONE &&
+-		     rela->type != R_X86_64_PC32 &&
+-		     rela->type != R_X86_64_PLT32) ||
+-		    strcmp(rela->sym->name, "__fentry__"))
+-			continue;
++		/* rela = list_first_entry(&sym->sec->rela->relas, struct rela, */
++		/* 			list); */
++		/* if ((rela->type != R_X86_64_NONE && */
++		/*      rela->type != R_X86_64_PC32 && */
++		/*      rela->type != R_X86_64_PLT32) || */
++		/*     strcmp(rela->sym->name, "__fentry__")) */
++		/* 	continue; */
+ 
+ 		sym->has_func_profiling = 1;
+ #endif
+@@ -368,6 +368,7 @@ struct kpatch_elf *kpatch_elf_open(const char *name)
+ 	INIT_LIST_HEAD(&kelf->sections);
+ 	INIT_LIST_HEAD(&kelf->symbols);
+ 	INIT_LIST_HEAD(&kelf->strings);
++    kelf->name = strdup(name);
+ 
+ 	/* read and store section, symbol entries from file */
+ 	kelf->elf = elf;
+diff --git a/kpatch-build/kpatch-elf.h b/kpatch-build/kpatch-elf.h
+index d2bb454..a3a3526 100644
+--- a/kpatch-build/kpatch-elf.h
++++ b/kpatch-build/kpatch-elf.h
+@@ -104,6 +104,7 @@ struct string {
+ 
+ struct kpatch_elf {
+ 	Elf *elf;
++    char * name;
+ 	struct list_head sections;
+ 	struct list_head symbols;
+ 	struct list_head strings;
+diff --git a/kpatch-build/lookup.c b/kpatch-build/lookup.c
+index 4f8c779..6c558a1 100644
+--- a/kpatch-build/lookup.c
++++ b/kpatch-build/lookup.c
+@@ -69,6 +69,9 @@ struct lookup_table {
+ #define for_each_exp_symbol(ndx, iter, table) \
+ 	for (ndx = 0, iter = table->exp_syms; ndx < table->exp_nr; ndx++, iter++)
+ 
++static bool lookup_exported_symbol(struct lookup_table *table, char *name,
++                                   struct lookup_result *result);
++
+ static int maybe_discarded_sym(const char *name)
+ {
+ 	if (!name)
+@@ -90,33 +93,36 @@ static int maybe_discarded_sym(const char *name)
+ }
+ 
+ static int locals_match(struct lookup_table *table, int idx,
+-			struct sym_compare_type *child_locals)
++                        struct sym_compare_type *child_locals)
+ {
+ 	struct sym_compare_type *child;
+ 	struct object_symbol *sym;
+-	int i, found;
++	int i, found, ret = 1;
+ 
+ 	i = idx + 1;
+-	for_each_obj_symbol_continue(i, sym, table) {
+-		if (sym->type == STT_FILE)
+-			break;
+-		if (sym->bind != STB_LOCAL)
+-			continue;
+-		if (sym->type != STT_FUNC && sym->type != STT_OBJECT)
+-			continue;
+-
+-		found = 0;
+-		for (child = child_locals; child->name; child++) {
+-			if (child->type == sym->type &&
+-			    !strcmp(child->name, sym->name)) {
+-				found = 1;
+-				break;
+-			}
+-		}
+-
+-		if (!found)
+-			return 0;
+-	}
++    for_each_obj_symbol_continue(i, sym, table) {
++        if (sym->type == STT_FILE)
++            break;
++        if (sym->bind != STB_LOCAL)
++            continue;
++        if (sym->type != STT_FUNC && sym->type != STT_OBJECT)
++            continue;
++
++        found = 0;
++        for (child = child_locals; child->name; child++) {
++            if (child->type == sym->type &&
++                !strcmp(child->name, sym->name)) {
++                found = 1;
++                break;
++            }
++        }
++
++        if (!found) {
++            fprintf(stderr, "Could not find %s (type=%d) in patch\n\n",
++                    sym->name, sym->type);
++            ret = 0;
++        }
++    }
+ 
+ 	for (child = child_locals; child->name; child++) {
+ 		/*
+@@ -126,6 +132,10 @@ static int locals_match(struct lookup_table *table, int idx,
+ 		if (maybe_discarded_sym(child->name))
+ 			continue;
+ 
++        // Sometimes these symbols are reordered.
++        if (strstr(child->name, "__PRETTY_FUNCTION__"))
++            continue;
++
+ 		found = 0;
+ 		i = idx + 1;
+ 		for_each_obj_symbol_continue(i, sym, table) {
+@@ -144,11 +154,14 @@ static int locals_match(struct lookup_table *table, int idx,
+ 			}
+ 		}
+ 
+-		if (!found)
+-			return 0;
++		if (!found) {
++             fprintf(stderr, "Could not find %s (type=%d) in binary\n",
++                     child->name, child->type);
++			ret = 0;
++        }
+ 	}
+ 
+-	return 1;
++	return ret;
+ }
+ 
+ static void find_local_syms(struct lookup_table *table, char *hint,
+@@ -163,11 +176,16 @@ static void find_local_syms(struct lookup_table *table, char *hint,
+ 	for_each_obj_symbol(i, sym, table) {
+ 		if (sym->type != STT_FILE)
+ 			continue;
+-		if (strcmp(hint, sym->name))
++
++		if (strcmp(hint, sym->name) != 0)
+ 			continue;
++
++        printf("Match Sections: %s <-> %s\n", hint, sym->name);
++
+ 		if (!locals_match(table, i, child_locals))
+ 			continue;
+-		if (table->local_syms)
++
++        if (table->local_syms)
+ 			ERROR("found duplicate matches for %s local symbols in %s symbol table",
+ 			      hint, table->objname);
+ 
+@@ -175,11 +193,12 @@ static void find_local_syms(struct lookup_table *table, char *hint,
+ 	}
+ 
+ 	if (!table->local_syms)
+-		ERROR("couldn't find matching %s local symbols in %s symbol table",
++		ERROR("couldn't find matching '%s' local symbols in %s symbol table",
+ 		      hint, table->objname);
+ }
+ 
+ /* Strip the path and replace '-' with '_' */
++#if 0
+ static char *make_modname(char *modname)
+ {
+ 	char *cur, *name;
+@@ -200,6 +219,7 @@ static char *make_modname(char *modname)
+ 
+ 	return name;
+ }
++#endif
+ 
+ static void symtab_read(struct lookup_table *table, char *path)
+ {
+@@ -208,16 +228,17 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 	int alloc_nr = 0, i = 0;
+ 	int matched;
+ 	bool skip = false;
+-	char line[256], name[256], size[16], type[16], bind[16], ndx[16];
++	char line[1024], name[1024], size[16], type[16], bind[16], ndx[16];
+ 
+-	if ((file = fopen(path, "r")) == NULL)
+-		ERROR("fopen");
++	if ((file = fopen(path, "r")) == NULL) {
++		ERROR("fopen: %s", path);
++    }
+ 
+ 	/*
+ 	 * First, get an upper limit on the number of entries for allocation
+ 	 * purposes:
+ 	 */
+-	while (fgets(line, 256, file))
++	while (fgets(line, 1024, file))
+ 		alloc_nr++;
+ 
+ 	table->obj_syms = malloc(alloc_nr * sizeof(*table->obj_syms));
+@@ -225,11 +246,15 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 		ERROR("malloc table.obj_syms");
+ 	memset(table->obj_syms, 0, alloc_nr * sizeof(*table->obj_syms));
+ 
++    table->exp_syms = malloc(alloc_nr * sizeof(*table->exp_syms));
++	if (!table->exp_syms)
++		ERROR("malloc table.exp_syms");
++	memset(table->exp_syms, 0, alloc_nr * sizeof(*table->exp_syms));
++
+ 	rewind(file);
+ 
+ 	/* Now read the actual entries: */
+-	while (fgets(line, 256, file)) {
+-
++	while (fgets(line, 1024, file)) {
+ 		/*
+ 		 * On powerpc, "readelf -s" shows both .dynsym and .symtab
+ 		 * tables.  .dynsym is just a subset of .symtab, so skip it to
+@@ -242,11 +267,32 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 			skip = false;
+ 			continue;
+ 		}
++        
++        matched = sscanf(line, "%*s %lx %s %s %s %*s %s %s\n",
++                         &addr, size, type, bind, ndx, name);
++
++        if (matched == 6 && (!strcmp(ndx, "UND") || strstr(name, "@"))) {
++            int e = table->exp_nr;
++            table->exp_syms[e].name = strdup(name);
++            char *p = strstr(name, "@");
++            if (p) {
++                while (*p == '@') {
++                    *p = '\0'; p++;
++                }
++            }
++            if (lookup_exported_symbol(table, name, NULL)) {
++                continue; // We already have this symbol
++            }
++            table->exp_syms[e].name = strdup(name);
++            table->exp_syms[e].objname = strdup("dl");
++
++            table->exp_nr ++;
++            continue;
++        }
++
+ 		if (skip)
+ 			continue;
+ 
+-		matched = sscanf(line, "%*s %lx %s %s %s %*s %s %s\n",
+-				 &addr, size, type, bind, ndx, name);
+ 
+ 		if (matched == 5) {
+ 			name[0] = '\0';
+@@ -254,16 +300,17 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 		}
+ 
+ 		if (matched != 6 ||
+-		    !strcmp(ndx, "UND") ||
+ 		    !strcmp(type, "SECTION"))
+ 			continue;
+ 
++
+ 		table->obj_syms[i].addr = addr;
+ 		table->obj_syms[i].size = strtoul(size, NULL, 0);
+ 
+ 		if (!strcmp(bind, "LOCAL")) {
+ 			table->obj_syms[i].bind = STB_LOCAL;
+-		} else if (!strcmp(bind, "GLOBAL")) {
++		} else if (!strcmp(bind, "GLOBAL")
++                   || !strcmp(bind, "UNIQUE") ) {
+ 			table->obj_syms[i].bind = STB_GLOBAL;
+ 		} else if (!strcmp(bind, "WEAK")) {
+ 			table->obj_syms[i].bind = STB_WEAK;
+@@ -279,6 +326,9 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 			table->obj_syms[i].type = STT_FUNC;
+ 		} else if (!strcmp(type, "FILE")) {
+ 			table->obj_syms[i].type = STT_FILE;
++        } else if (!strcmp(type, "TLS")) {
++			table->obj_syms[i].type = STT_OBJECT;
++            log_normal("thread-local storage: %s\n", name);
+ 		} else {
+ 			ERROR("unknown symbol type %s", type);
+ 		}
+@@ -295,79 +345,6 @@ static void symtab_read(struct lookup_table *table, char *path)
+ 	fclose(file);
+ }
+ 
+-/*
+- * The Module.symvers file format is one of the following, depending on kernel
+- * version:
+- *
+- * <CRC>	<Symbol>	<Module>	<Export Type>
+- * <CRC>	<Symbol>	<Namespace>	<Module>	<Export Type>
+- * <CRC>	<Symbol>	<Module>	<Export Type>	<Namespace>
+- *
+- * All we care about is Symbol and Module.  Since the format is unpredictable,
+- * we have to dynamically determine which column is Module by looking for
+- * "vmlinux".
+- */
+-static void symvers_read(struct lookup_table *table, char *path)
+-{
+-	FILE *file;
+-	int i, column, mod_column = 0;
+-	char line[4096];
+-	char *tmp, *objname, *symname;
+-
+-	if ((file = fopen(path, "r")) == NULL)
+-		ERROR("fopen");
+-
+-	while (fgets(line, 4096, file)) {
+-		table->exp_nr++;
+-
+-		if (mod_column)
+-			continue;
+-
+-		/* Find the module column */
+-		for (column = 1, tmp = line; (tmp = strchr(tmp, '\t')); column++) {
+-			tmp++;
+-			if (*tmp && !strncmp(tmp, "vmlinux", 7))
+-				mod_column = column;
+-		}
+-	}
+-
+-	if (table->exp_nr && !mod_column)
+-		ERROR("Module.symvers: invalid format");
+-
+-	table->exp_syms = malloc(table->exp_nr * sizeof(*table->exp_syms));
+-	if (!table->exp_syms)
+-		ERROR("malloc table.exp_syms");
+-	memset(table->exp_syms, 0,
+-	       table->exp_nr * sizeof(*table->exp_syms));
+-
+-	rewind(file);
+-	for (i = 0; fgets(line, 4096, file); i++) {
+-		char *name = NULL, *mod = NULL;
+-
+-		for (column = 1, tmp = line; (tmp = strchr(tmp, '\t')); column++) {
+-			*tmp++ = '\0';
+-			if (*tmp && column == 1)
+-				name = tmp;
+-			else if (*tmp && column == mod_column)
+-				mod = tmp;
+-		}
+-
+-		if (!name || !mod)
+-			continue;
+-
+-		symname = strdup(name);
+-		if (!symname)
+-			perror("strdup");
+-
+-		objname = make_modname(mod);
+-
+-		table->exp_syms[i].name = symname;
+-		table->exp_syms[i].objname = objname;
+-	}
+-
+-	fclose(file);
+-}
+-
+ struct lookup_table *lookup_open(char *symtab_path, char *objname,
+ 				 char *symvers_path, char *hint,
+ 				 struct sym_compare_type *locals)
+@@ -381,7 +358,9 @@ struct lookup_table *lookup_open(char *symtab_path, char *objname,
+ 
+ 	table->objname = objname;
+ 	symtab_read(table, symtab_path);
+-	symvers_read(table, symvers_path);
++    // wf-userlang: We no longer read the Module.symvers file.
++    // Instead, we consider all undfined symbols.
++    // symvers_read(table, symvers_path);
+ 	find_local_syms(table, hint, locals);
+ 
+ 	return table;
+diff --git a/waitfree-test/Makefile b/waitfree-test/Makefile
+new file mode 100644
+index 0000000..109f571
+--- /dev/null
++++ b/waitfree-test/Makefile
+@@ -0,0 +1,24 @@
++.PHONY: all clean
++
++all: patch.o
++
++patch.o: obj1-old.o obj1-new.o symtab Module.symvers
++	../kpatch-build/create-diff-object obj1-old.o obj1-new.o xy symtab Module.symvers patch patch.o
++
++symtab: bin-old
++	readelf -s bin-old > symtab
++
++Module.symvers:
++	@echo "Muss manuell erstellt werden (nicht löschen)"
++
++bin-old: obj1-old.o obj2.o
++	gcc -o $@ $^
++
++bin-new: obj1-new.o obj2.o
++	gcc -o $@ $^
++
++%.o: %.c
++	gcc -ffunction-sections -fdata-sections -c -o $@ $<
++
++clean:
++	rm -rf obj1-old.o obj1-new.o obj2.o bin-old bin-new symtab patch.o
+diff --git a/waitfree-test/obj1-new.c b/waitfree-test/obj1-new.c
+new file mode 100644
+index 0000000..342ae92
+--- /dev/null
++++ b/waitfree-test/obj1-new.c
+@@ -0,0 +1,25 @@
++#include <stdio.h>
++#include <unistd.h>
++
++int test3(void);
++
++int test1(int x, int y) {
++    return x + y + test3() * test3();
++}
++
++int test0(int base, int len) {
++    for (int i = 0; i < len; i++) {
++        int ret = test1(base, i);
++        printf("> %d\n", ret);
++    }
++}
++
++int main(void) {
++    int i = 1000;
++    while (1) {
++        test0(i, 5);
++        sleep(2);
++        i += 1000;
++    }
++    return 0;
++}
+diff --git a/waitfree-test/obj1-old.c b/waitfree-test/obj1-old.c
+new file mode 100644
+index 0000000..767fa90
+--- /dev/null
++++ b/waitfree-test/obj1-old.c
+@@ -0,0 +1,25 @@
++#include <stdio.h>
++#include <unistd.h>
++
++int test3(void);
++
++int test1(int x, int y) {
++    return x + y + test3();
++}
++
++int test0(int base, int len) {
++    for (int i = 0; i < len; i++) {
++        int ret = test1(base, i);
++        printf("> %d\n", ret);
++    }
++}
++
++int main(void) {
++    int i = 1000;
++    while (1) {
++        test0(i, 5);
++        sleep(2);
++        i += 1000;
++    }
++    return 0;
++}
+diff --git a/waitfree-test/obj2.c b/waitfree-test/obj2.c
+new file mode 100644
+index 0000000..d7fe8c7
+--- /dev/null
++++ b/waitfree-test/obj2.c
+@@ -0,0 +1,3 @@
++int test3(void) {
++    return 42;
++}
+-- 
+2.42.0
+

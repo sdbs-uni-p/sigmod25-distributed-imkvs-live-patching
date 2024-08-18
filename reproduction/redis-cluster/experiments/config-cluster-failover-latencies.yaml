@@ -1,0 +1,15 @@
+name: "Redis Cluster-Benchmark - Latencies"
+
+_reference:
+  - "config-common-failover.yaml"
+
+commit: "7.0.11"
+
+data:
+  _iterations:
+    - max_memory_usage_gb: 0
+    - max_memory_usage_gb: 30
+
+# Use patch-benchmark to overwrite the configuration. E.g.
+# patch-benchmark ... --overwrite config: redis_cluster.config='cluster-configs/cluster-7-1.yaml'
+

@@ -1,0 +1,23 @@
+name: "Redis Cluster-Benchmark - Baseline"
+
+_reference:
+  - "config-common-patch.yaml"
+
+_iterations:
+  - commit: "7.0.11"
+  - commit: "livepatch"
+
+patch_generation:
+  _iterations:
+    - patches: 0
+
+patch:
+  # Reference run; We skip patches, so we don't patch!
+  skip_patch_file: True
+  _iterations:
+    - method: "lazy"
+
+data:
+  _iterations:
+    - max_memory_usage_gb: 0
+    - max_memory_usage_gb: 30

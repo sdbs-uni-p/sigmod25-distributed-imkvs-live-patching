@@ -1,0 +1,28 @@
+name: "Redis Cluster-Benchmark - Baseline"
+
+_reference:
+  - "config-common-patch.yaml"
+  - "config-common-idle.yaml"
+
+_iterations:
+  - commit: "network"
+    # This is our baseline run and must also run long enough for the failover runs
+    benchmark:
+      idle_before: 1810
+  - commit: "livepatch-network"
+    # This is our baseline run with patching enabled, but without patch application. Patching run lasts also 520s
+    benchmark:
+      idle_before: 520
+
+patch_generation:
+  _iterations:
+    - patches: 0
+
+patch:
+  # Reference run; We skip patches, so we don't patch!
+  skip_patch_file: True
+  _iterations:
+    - method: "lazy"
+
+# Use patch-benchmark to overwrite the configuration. E.g.
+# patch-benchmark ... --overwrite config: redis_cluster.config='cluster-configs/cluster-7-1.yaml'

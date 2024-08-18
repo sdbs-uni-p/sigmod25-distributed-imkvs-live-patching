@@ -1,0 +1,12 @@
+#!/usr/bin/env zsh
+set -euv
+
+benchmark=$1
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+
+output="${SCRIPT_DIR}/../../data/${benchmark}"
+mv result ${output}
+

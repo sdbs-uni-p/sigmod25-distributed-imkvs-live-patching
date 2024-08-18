@@ -1,0 +1,20 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+if [ ! -d ${SCRIPT_DIR}/memtier_benchmark ]; then
+    git clone https://github.com/RedisLabs/memtier_benchmark.git
+fi
+
+cd memtier_benchmark
+git reset --hard
+git clean -xffd
+git checkout d5ac1f4167e01f0b76b0ea095640747ec3670c1d
+git am ${SCRIPT_DIR}/patches/memtier_benchmark.patch
+
+autoreconf -ivf
+./configure
+make clean
+make -j`nproc`
+

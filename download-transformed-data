@@ -1,0 +1,18 @@
+#!/usr/bin/env zsh
+
+set -eu
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+if [ -d transformed-data ]; then
+	echo "transformed-data already exists!"
+	exit 0
+fi
+
+# Download
+wget https://zenodo.org/records/13729902/files/transformed-data.tar.xz
+# Extract
+tar xfJv transformed-data.tar.xz
+rm transformed-data.tar.xz
+

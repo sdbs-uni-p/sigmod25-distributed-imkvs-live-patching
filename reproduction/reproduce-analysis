@@ -1,0 +1,16 @@
+#!/usr/bin/env zsh
+
+set -evu
+
+SCRIPT_DIR=${0:a:h}
+
+# Transform raw benchmark data
+cd ${SCRIPT_DIR}/redis-cluster/transformation
+./setup
+./do-all
+
+# Analyze data
+cd ${SCRIPT_DIR}/plots
+./setup
+./do-all
+

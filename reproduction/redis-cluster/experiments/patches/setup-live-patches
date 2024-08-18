@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+
+for size in 128; do
+    cp redis-live-patch.patch redis-live-patch.patch-$size
+    sed -i "s|#define MAX_PATCHES 16|#define MAX_PATCHES $size|g" redis-live-patch.patch-$size
+done
+

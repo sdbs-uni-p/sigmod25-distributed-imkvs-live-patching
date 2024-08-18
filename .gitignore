@@ -1,0 +1,5 @@
+*-output/
+build/
+result*/
+redis-benchmark/
+memtier_benchmark/

@@ -1,0 +1,25 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+pyyaml = "*"
+redis = "*"
+pandas = "*"
+pyelftools = "*"
+psutil = "*"
+duckdb = "==0.9.2"
+sqlparse = "*"
+dask = "*"
+requests = "*"
+
+[dev-packages]
+pycln = "*"
+flake8 = "*"
+isort = "*"
+black = "*"
+mypy = "*"
+
+[requires]
+python_version = "3.10"

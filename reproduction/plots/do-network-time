@@ -1,0 +1,10 @@
+#!/usr/bin/env zsh
+
+source INPUT_BASE_DIRECTORY
+./exec-file-py --input-data \
+    $INPUT_BASE_DIRECTORY/network-reference/network-reference.duckdb \
+    $INPUT_BASE_DIRECTORY/network-patch/network-patch.duckdb \
+    $INPUT_BASE_DIRECTORY/network-failover/network-failover.duckdb \
+    $INPUT_BASE_DIRECTORY/network-failover-snapshot/network-failover-snapshot.duckdb \
+    --output $INPUT_BASE_DIRECTORY/output --plot plot-network-time.R
+

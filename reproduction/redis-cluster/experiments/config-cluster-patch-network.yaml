@@ -1,0 +1,21 @@
+name: "Redis Cluster-Benchmark - Baseline"
+
+_reference:
+  - "config-common-patch.yaml"
+  - "config-common-idle.yaml"
+
+_iterations:
+  - commit: "livepatch-network"
+
+patch_generation:
+  _iterations:
+    - patches: 10
+
+patch:
+  sleep_between_versions: 50
+
+benchmark:
+  idle_before: 520
+
+# Use patch-benchmark to overwrite the configuration. E.g.
+# patch-benchmark ... --overwrite config: redis_cluster.config='cluster-configs/cluster-7-1.yaml'

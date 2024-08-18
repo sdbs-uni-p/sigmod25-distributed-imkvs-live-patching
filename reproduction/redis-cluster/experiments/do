@@ -1,0 +1,25 @@
+#!/usr/bin/env zsh
+set -u
+
+SCRIPT_DIR=${0:a:h}
+
+benchmark=$1
+config=$2
+
+if [ -z ${benchmark+x} ]; then
+    echo "No benchmark given!"
+    exit 1
+fi
+if [ -z ${config+x} ]; then
+    echo "No config given!"
+    exit 1
+fi
+if [ ! -f ${config} ]; then
+    echo "Config doesn't exist!"
+    exit 1
+fi
+
+pipenv run python patch-benchmark --config ${config}
+
+${SCRIPT_DIR}/collect-results ${benchmark}
+

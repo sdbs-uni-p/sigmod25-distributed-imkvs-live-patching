@@ -1,0 +1,22 @@
+#!/usr/bin/env zsh
+
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+dir=$1
+
+if [ ! -d ${dir} ]; then
+    echo "Dir ${dir} doesn't exist!"
+    exit 1
+fi
+
+output=${dir}/`basename ${dir}`.duckdb
+if [ -f ${output} ]; then
+    echo "Output '${output}' already exists!"
+    exit 1
+fi
+
+pipenv run python merge.py --databases ${dir}/*.duckdb --output ${output}
+

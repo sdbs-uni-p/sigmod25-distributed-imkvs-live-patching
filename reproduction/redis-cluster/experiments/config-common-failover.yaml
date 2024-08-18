@@ -1,0 +1,10 @@
+_reference:
+  - "config-common.yaml"
+
+failover:
+  failover_after_s: 15
+  skip_failover: False
+  skip_restart_master: False
+  skip_restart_replica: False
+  all_nodes: False
+  snapshot: False

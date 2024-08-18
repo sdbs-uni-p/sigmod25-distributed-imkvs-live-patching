@@ -1,0 +1,83 @@
+#!/usr/bin/env zsh
+set -euvx
+
+SCRIPT_DIR=${0:a:h}
+
+amount=$1
+commit=$2
+
+REDIS_BUILD=${SCRIPT_DIR}/build/redis
+GIT_PATCHES=${SCRIPT_DIR}/git-patches-$commit
+COMPILED_PATCHES=${SCRIPT_DIR}/compiled-patches-$commit
+FINAL_PATCHES=${SCRIPT_DIR}/patches-$commit
+
+if [ $amount -le `ls ${FINAL_PATCHES} | wc -l` ]; then
+    exit 0
+fi
+
+if [ ! -d ${REDIS_BUILD} ]; then
+    mkdir -p ${REDIS_BUILD}
+fi
+rsync -avh ${SCRIPT_DIR}/../../build/redis-github/ ${REDIS_BUILD}/
+
+cd ${REDIS_BUILD}
+set +e
+git am --abort
+set -e
+git clean -xffd
+git reset --hard
+
+git checkout $commit
+
+cd ${SCRIPT_DIR}
+rm -rf ${COMPILED_PATCHES}
+mkdir ${COMPILED_PATCHES}
+
+cd ${REDIS_BUILD}
+make CFLAGS="-gz=none -ffunction-sections -fdata-sections" -j `nproc`
+
+COMMITS_FILE=commits-$commit
+cd ${SCRIPT_DIR}
+rm -f ${COMMITS_FILE}
+rm -rf ${GIT_PATCHES}
+mkdir ${GIT_PATCHES}
+for i in `seq 1 $amount`; do
+    dst=${GIT_PATCHES}/patch-$i.patch
+    cp ${SCRIPT_DIR}/base.patch $dst 
+    if [[ $i -gt 1 ]]; then
+        # Use base.patch as very first version. So do not modify increment
+        sed -i "s|number + 1|number + $i|g" $dst
+        sed -i "s|number + 0|number + $((i-1))|g" $dst
+    fi
+    echo $dst
+
+    mkdir ${COMPILED_PATCHES}/livepatch-$i
+    rsync -a ${REDIS_BUILD}/ ${COMPILED_PATCHES}/livepatch-$i/build/ 
+
+    cd ${REDIS_BUILD}
+    git am -3 $dst
+    #git tag livepatch-$i
+
+    make CFLAGS="-gz=none -ffunction-sections -fdata-sections" -j `nproc`
+    rsync -a ${REDIS_BUILD}/ ${COMPILED_PATCHES}/livepatch-$i/build-new/
+
+    ${SCRIPT_DIR}/../../redis-build-utils/generate-patch -d ${COMPILED_PATCHES}/livepatch-$i
+    cp $dst ${COMPILED_PATCHES}/livepatch-$i/patch.patch
+    
+    # Clean build directories
+    if [[ $i -gt 1 ]]; then
+        # We keep the build binary of the "first" patch
+        rm -rf ${COMPILED_PATCHES}/livepatch-$i/build
+    fi
+    rm -rf ${COMPILED_PATCHES}/livepatch-$i/build-new
+    rm -rf ${COMPILED_PATCHES}/livepatch-$i/diff-object-files
+
+    cd ${SCRIPT_DIR}
+    echo livepatch-$i >> ${COMMITS_FILE}
+done
+
+cd ${SCRIPT_DIR}
+rm -rf ${FINAL_PATCHES}
+mkdir ${FINAL_PATCHES}
+cat ${SCRIPT_DIR}/${COMMITS_FILE} | xargs -I {} -n1 cp ${COMPILED_PATCHES}/{}/patch--patch.o ${FINAL_PATCHES}/{}.o
+

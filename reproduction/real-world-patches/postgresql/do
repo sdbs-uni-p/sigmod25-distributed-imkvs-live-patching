@@ -1,0 +1,13 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+pipenv run ./crawl-commitfest.py
+pipenv run ./combine-commitfest-with-git.py
+
+cd ${SCRIPT_DIR}/crawl-postgres
+./crawl ../bug-fix-commits.txt
+./analyze-real-world-success-patch-list output/patches/
+

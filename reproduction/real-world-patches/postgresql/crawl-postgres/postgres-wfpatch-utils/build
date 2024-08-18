@@ -1,0 +1,233 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+
+echo ">>> $0 <<<" | tee -a $LOG
+#############
+# ARGUMENTS #
+#############
+function show_help {
+    echo ""
+    echo "Usage: Required arguments: -b|--build-dir <root-build-dir> -n|--git-name <clone-repository-name> -c|--commit <git-commit> -o|--output-dir <output-directory> [-t|--threads <threads>]
+    -b|--build-dir      The root directory of the build directory. One directory with <clone-repository-name> is expected inside this directory.
+    -n|--git-name       The name of the cloned git repository on which this script should operate on
+    -c|--commit         The commit hash or tag for which the binaries (HEAD and HEAD^) are built. git checkout is used to get the commit.
+    -o|--output-dir     The directory in which the binary builds should be stored 
+    -t|--threads        The number of threads to be used
+    --no-install        Does not install the first version
+    --install-new       Installs the old and the new version
+    # --with-git          Compile PostgreSQL with the git repository
+    --debug             Compile PostgreSQL as debug build
+
+    Why use this structure with the build-directory?
+    We use ccache to make compilation faster. By using ccache, we have to ensure a equal structure for every build. E.g. the build-dir should always have the same path to the git-directory for every build
+    " | tee -a $LOG
+    exit 1
+}
+
+install=true
+install_new=false
+compile_debug=false
+#compile_with_git=false
+git_name=postgres
+threads=$(nproc)
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -b|--build-dir) root_build_dir="$2"; echo "-b|--build-dir $root_build_dir" | tee -a $LOG; shift ;;
+        -n|--git-name) git_name="$2"; echo "-g|--git-name $git_name" | tee -a $LOG; shift ;;
+        -c|--commit) commit="$2"; echo "-c|--commit $commit" | tee -a $LOG; shift ;;
+        -o|--output-dir) output_dir="$2"; echo "-o|--output-dir $output_dir" | tee -a $LOG; shift ;;
+        -t|--threads) threads="$2"; echo "-t|--threads $threads" | tee -a $LOG; shift ;;
+        --no-install) install=false; ;;
+        --install-new) install_new=true; ;;
+        --debug) compile_debug=true; ;;
+        #--with-git) compile_with_git=true; ;;
+        *) echo "Unknown parameter passed: $1"; show_help ;;
+    esac
+    shift
+done
+
+if [ -z ${root_build_dir} ] \
+    || [ -z ${commit} ] \
+    || [ -z ${output_dir} ]; then
+    show_help
+fi
+
+if [ ! -d ${output_dir} ]; then
+    mkdir -p ${output_dir}
+fi
+
+root_build_dir=`readlink -f ${root_build_dir}`
+repository=${root_build_dir}/${git_name}
+build_dir=${root_build_dir}/build
+install_dir=${root_build_dir}/install
+
+output_dir=`readlink -f ${output_dir}`
+
+if [ ! -d ${repository} ]; then
+    echo " The git repository ${repository} doesn't exist.
+    The following structure is assumed:
+    <-b|--build-dir>
+    \t- <-n|--git-name>
+    \t- ...
+    "
+    show_help
+fi
+if [[ ! ${threads} =~ ^[0-9]+$ ]]; then
+    echo "-t|--threads must be a number: ${threads}"
+    show_help
+fi
+
+echo "Using ${threads} threads" | tee -a $LOG
+echo "Using ${root_build_dir} as root build directory" | tee -a $LOG
+echo "Commit: ${commit}" | tee -a $LOG
+#############
+# CONSTANTS #
+#############
+bin="${output_dir}/bin"
+old="${output_dir}/build"
+bin_new="${output_dir}/bin-new"
+new="${output_dir}/build-new"
+
+if $compile_debug; then
+    bin=${bin}-debug
+    old=${old}-debug
+    bin_new=${bin_new}-debug
+    new=${new}-debug
+fi
+
+patch_file="${output_dir}/patch.patch"
+
+echo "Old: $old" | tee -a $LOG
+echo "New: $new" | tee -a $LOG
+echo "Bin: $bin" | tee -a $LOG
+echo "Patch: $patch_file" | tee -a $LOG
+
+###############
+# BUILD FLAGS #
+###############
+export LDFLAGS=-ldl
+export CC=gcc
+export CFLAGS="-gz=none -ffunction-sections -fdata-sections"
+
+#########
+# BUILD #
+#########
+function prepare_postgres_git() {
+    local commit=$1
+
+    cd ${repository}
+
+    git checkout -f ${commit}
+
+    git clean -xffd 
+    git reset --hard
+}
+
+function build() {
+    additional_flags=""
+    if $compile_debug; then
+        additional_flags="--enable-debug"
+        CFLAGS="${CFLAGS} -ggdb -Og -g3 -fno-omit-frame-pointer"
+    fi
+    # --prefix sets the installation location
+    ${repository}/configure $additional_flags --prefix=${install_dir}
+}
+
+function cleanup() {
+    exit_code=$?
+    
+    if [ ${exit_code} -eq 0 ]; then
+        echo "BUILD-SCRIPT: Finished successfully" | tee -a $LOG
+    else
+        echo "Used ${build_dir} as build directory. Analyze errors in this directory..." | tee -a $LOG 
+        echo "BUILD-SCRIPT: Error occurred" | tee -a $LOG
+    fi
+    exit $exit_code
+}
+
+#if $compile_with_git; then
+#    original_repository=${repository}
+#    # Old
+#    rsync -a --delete ${original_repository}/ ${old}/
+#
+#    repository=${old}
+#    prepare_PostgreSQL_git "${commit}^"
+#    
+#    cd ${old}
+#    bin=${bin} # Install dir
+#    build
+#    cmake --build . --parallel ${threads}
+#
+#    # New
+#    rsync -a --delete ${original_repository}/ ${new}/
+#    
+#    repository=${new}
+#    prepare_PostgreSQL_git ${commit}
+#    
+#    cd ${new}
+#    bin=${bin_new} # Install dir
+#    build
+#    cmake --build . --parallel ${threads}
+#
+#    exit 0
+#fi
+
+
+
+if [ ! -d ${old} ] && [ ! -d ${new} ]; then
+    echo "Compiling ${commit}" | tee -a $LOG
+    
+    if [ -d ${build_dir} ]; then
+       rm -rf ${build_dir}
+    fi
+    mkdir -p ${build_dir}
+    
+    trap "cleanup" EXIT INT ERR
+
+    # BUILD OLD VERSION 
+    prepare_postgres_git "${commit}^"
+    
+    cd ${build_dir}
+    build
+    make -j${threads}
+
+    if $install; then
+        rm -rf ${install_dir} && mkdir -p ${install_dir}
+        make install
+        rsync -av --delete ${install_dir}/ ${bin}/
+    fi
+    
+    # Copy build directory
+    rm -rf ${old} && mkdir -p ${old}
+    rsync -a --delete ${build_dir}/ ${old}/
+
+    # BUILD NEW VERSION
+    prepare_postgres_git "${commit}"
+    
+    # Extract and store patch 
+    cd ${repository}
+    git format-patch -1 --stdout > ${patch_file}
+
+    cd ${build_dir}
+    build
+    make -j${threads}
+
+    if $install_new; then
+        rm -rf ${install_dir} && mkdir -p ${install_dir}
+        make install
+        rsync -av --delete ${install_dir}/ ${bin_new}/
+    fi
+    
+    rm -rf ${new} && mkdir -p ${new}
+    # Delete final directory, otherwise directory is moved INTO this directory...
+    # But it should replace the directory
+    (cd $(dirname ${new}) && rm -rf $(basename ${new}))
+    mv ${build_dir} ${new}
+ else
+     echo "All build directories already exists. Skipping compiling" | tee -a $LOG
+fi
+
+
+echo "<<< $0 >>>" | tee -a $LOG

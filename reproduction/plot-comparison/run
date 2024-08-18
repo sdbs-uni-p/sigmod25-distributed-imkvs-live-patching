@@ -1,0 +1,4 @@
+#!/usr/bin/env zsh
+
+pipenv install
+pipenv run streamlit run comparison.py

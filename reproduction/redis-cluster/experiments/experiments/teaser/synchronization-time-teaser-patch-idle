@@ -1,0 +1,17 @@
+#!/usr/bin/env zsh
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+
+experiment_name="synchronization-time-teaser-patch-idle"
+execute () {
+    data=$1
+    
+    echo "Data: $data"
+
+    cd ${SCRIPT_DIR}/../../
+    pipenv run python patch-benchmark --config config-cluster-patch-synchronization-idle.yaml --overwrite redis_cluster.config="cluster-configs/cluster-3-1.yaml" data.max_memory_usage_gb=$data data._iterations="None" patch_generation._iterations="None" patch_generation.patches=1 benchmark.idle_before=30
+}
+
+source ${SCRIPT_DIR}/util
+

@@ -1,0 +1,47 @@
+#!/usr/bin/env zsh
+set -evu
+
+SCRIPT_DIR=${0:a:h}
+
+cd ${SCRIPT_DIR}
+mkdir -p build
+if [ ! -d build/redis ]; then
+    git clone https://github.com/redis/redis.git build/redis
+    ./create-patch-store -r ${SCRIPT_DIR}/build/redis -p git-patches -c ${SCRIPT_DIR}/crawl-redis/real-world.commits.success
+fi
+
+cd ${SCRIPT_DIR}/build/redis
+
+patches=(`git tag -l | grep wfpatch`)
+
+for patch in "${patches[@]}"; do
+    set +e
+    pgrep -x redis-server | xargs kill -9
+    set -e
+
+    cd ${SCRIPT_DIR}/redis-build-utils
+    ./build -b ${SCRIPT_DIR}/build -n redis -c $patch -o ${SCRIPT_DIR}/output/$patch
+    ./generate-patch -d ${SCRIPT_DIR}/output/$patch
+    
+    output_dir=${SCRIPT_DIR}/experiment-output/$patch
+    wf_log=$output_dir/wf.log
+    mkdir -p $output_dir
+    touch $wf_log 
+
+    # Copy patches
+    cp ${SCRIPT_DIR}/output/$patch/patch--* $output_dir
+    
+    cd ${SCRIPT_DIR}/output/$patch/build/src
+    WF_LOGFILE=$wf_log WF_PATCH_TRIGGER_FIFO=/tmp/redis-trigger WF_PATCH_QUEUE=`readlink -f ${SCRIPT_DIR}/output/${patch}/patch--* | tr '\n' ',' | sed 's/,$//'` timeout 2m ./redis-server &
+    pid=$!
+    sleep 2
+    timeout 30s bash -c 'echo 1 > /tmp/redis-trigger'
+    sleep 5
+   
+    set +e 
+    kill -9 $pid
+    set -e
+done
+
+cd ${SCRIPT_DIR}
+./transform-experiment-output

@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+set -e
+
+SCRIPT_DIR=${0:a:h}
+cd ${SCRIPT_DIR}
+
+for data_dir in ../../data/*; do 
+    echo $data_dir
+    ./transform-experiment ${data_dir} 
+done
+

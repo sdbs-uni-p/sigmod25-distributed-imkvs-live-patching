@@ -1,0 +1,49 @@
+#!/usr/bin/env zsh
+
+patches_dir=$1
+if [ -z ${patches_dir} ] || [ ! -d ${patches_dir} ]; then
+    echo "Please specify the directory containing the patches subdirectory!"
+    exit 1
+fi
+
+output_file=real-world.commits.success
+if [ -f ${output_file} ] || [ -d ${output_file} ]; then
+    echo "The output file ${output_file} already exists or is a directory!"
+    exit 1
+fi
+
+touch ${output_file}
+
+string_lookup="INFO:root:[KP-DIFF] Success (all patches)"
+
+total_counter=0
+total_backend_counter=0
+build_fails=0
+success=0
+for file in ${patches_dir}/*; do
+    ((total_counter++))
+    commit_hash=`basename $file`
+    if [ ! -d ${file}/diff-object-files ]; then
+        ((build_fails++))
+        continue
+    fi
+    if [ ! -d ${file}/diff-object-files/build/src/backend ]; then
+        continue
+    fi
+    ((total_backend_counter++))
+    if [ ! -f ${file}/create-patch ]; then
+        continue
+    fi
+
+    if grep -qF ${string_lookup} ${file}/create-patch; then
+        echo ${commit_hash} | tee -a ${output_file}
+        ((success++))
+    fi
+done
+
+echo "Total commits analyzed: ${total_counter}"
+echo "Total build fails: ${build_fails}"
+
+echo ""
+echo "Backend commits: ${total_backend_counter}"
+echo "Success: ${success}"

@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+set -e
+
+pipenv install
+
+./setup-configs
+./setup-redis
+./setup-memtier_benchmark
+
+cd redis-build-utils/
+./setup-kpatch

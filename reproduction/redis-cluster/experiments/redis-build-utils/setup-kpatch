@@ -1,0 +1,17 @@
+#!/usr/bin/env zsh
+
+set -euv
+
+SCRIPT_DIR=${0:a:h}
+if [ ! -d kpatch ]; then
+    git clone https://github.com/dynup/kpatch.git
+fi
+
+cd kpatch
+git checkout 097bfa64555c95cea6774f96d00257c675a3f32e
+git am ${SCRIPT_DIR}/kpatch-patches/0001-Commits-squashed-of-Rommel-et-al.patch
+git am ${SCRIPT_DIR}/kpatch-patches/0002-Bump-to-v0.9.5.patch
+
+make clean
+make
+

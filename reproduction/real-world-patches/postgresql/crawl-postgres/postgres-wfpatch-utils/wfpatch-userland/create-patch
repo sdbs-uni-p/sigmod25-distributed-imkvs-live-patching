@@ -1,0 +1,74 @@
+#!/usr/bin/python3
+import tempfile
+import subprocess
+import logging
+import os.path
+
+logging.basicConfig(level=logging.DEBUG)
+
+def symtab(elf):
+    d = tempfile.NamedTemporaryFile(delete=False)
+    print(d.name)
+    logging.info("reading symtab of %s", elf)
+    subprocess.check_call(['readelf', '-s', "--wide", elf],
+                            stdout = d)
+    return d
+
+def diff_obj(args, symtab, old, new):
+    names = [os.path.basename(x) for x in (old, new)]
+    name = os.path.commonprefix(names).rstrip("-_.")
+    if not name.endswith(".o"):
+        name += ".o"
+    patch_file = f"{args.prefix}--{name}"
+    cmd = [args.create_diff_object, old, new, 'main', symtab, "IGNORED", name, patch_file]
+    logging.info("Create Patch: %s", " ".join(cmd))
+    try:
+        subprocess.check_call(cmd)
+    except subprocess.CalledProcessError as e:
+        if e.returncode == 3:
+            logging.info("[KP-DIFF] create-diff-object found no changes. Patch not created.")
+            return None
+        else:
+            logging.info("[KP-DIFF] Error Code {}".format(e.returncode))
+            raise
+    return patch_file
+
+if __name__ == "__main__":
+    import sys, argparse
+    parser = argparse.ArgumentParser("create-patch")
+    parser.add_argument("elf",   help="ELF file of original binary")
+    parser.add_argument("--obj", "-o", nargs=2, metavar=("OLD", "NEW"),
+                        action='append',default=[],required=True,
+                        help="Pair of old and new binary")
+    parser.add_argument("--prefix", "-p", default="patch",
+                        help="What prefix should be used for the patch objects")
+    parser.add_argument("--create-diff-object", default="create-diff-object",
+                        help="Path to create-diff-object")
+    args = parser.parse_args(sys.argv[1:])
+
+    symbols = symtab(args.elf)
+
+    patches = []
+    patch_success = 0
+    patch_empty = 0
+    patch_error = 0
+    for obj in args.obj:
+        try:
+            fn = diff_obj(args, symbols.name, obj[0], obj[1])
+            if fn:
+                patches.append(fn)
+                patch_success = patch_success + 1
+            else:
+                # Do not count anything, because there were no changes...
+                patch_empty = patch_empty + 1
+                pass
+        except subprocess.CalledProcessError:
+            patch_error = patch_error + 1
+    
+    if patch_success >= 1:
+        if patch_error == 0:
+            logging.info("[KP-DIFF] Success (all patches)")
+        else:
+            logging.info("[KP-DIFF] Success (partial)")
+    logging.info("[KP-DIFF] Patch Creation: {} success, {} error, {} empty (no diff)".format(patch_success, patch_error, patch_empty))
+    print("WF_PATCH_QUEUE=\"{};\"".format(",".join(patches)))

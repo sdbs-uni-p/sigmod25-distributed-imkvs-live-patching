@@ -1,0 +1,21 @@
+name: "Redis Cluster-Benchmark - Failover"
+
+# We use idle as basis because we do *not* performan any benchmark.
+# But we use different data loads..
+# So we measure synchronization time for an idle system!
+
+_reference:
+  - "config-common-failover.yaml"
+  - "config-common-idle.yaml"
+
+commit: "7.0.11"
+
+failover:
+  all_nodes: True
+
+benchmark:
+  idle_before: 10 # Otherwise we have to wait too long..
+
+# Use patch-benchmark to overwrite the configuration. E.g.
+# patch-benchmark ... --overwrite config: redis_cluster.config='cluster-configs/cluster-7-1.yaml'
+

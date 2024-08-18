@@ -1,0 +1,98 @@
+#!/usr/bin/env bash
+
+set -ue
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+root_dir=$1
+set +u
+root_workers=$2
+sub_workers=$3
+beder_args=""
+
+if [ -n "$root_workers" ]; then
+   beder_args="$beder_args --root-workers $root_workers"
+fi
+if [ -n "$sub_workers" ]; then
+    beder_args="$beder_args --sub-workers $sub_workers"
+fi
+set -u
+
+if [ ! -d ${root_dir} ]; then
+    echo "${root_dir} is not a directory!"
+    exit 1
+fi
+
+TMP_FILES_TO_DEL=()
+for benchmark_dir in `find ${root_dir} -type f -name log | xargs dirname | xargs dirname | uniq`; do
+    benchmark_name=`basename ${benchmark_dir}`
+    benchmark_name=${benchmark_name#"result-"} # remove "result-" prefix
+    output_file=${benchmark_dir}/${benchmark_name}.duckdb
+
+    if [ -f ${output_file} ]; then
+        echo "Skipping '${output_file}'. File already exists!"
+        continue
+    fi
+
+    echo "${output_file}"
+    for experiment_dir in $benchmark_dir/*; do
+        output_file=`mktemp`
+        TMP_FILES_TO_DEL+=($output_file)
+        experiment_output_file=$benchmark_dir/`basename $experiment_dir`.duckdb
+        pipenv run python beder2 --experiment ${experiment_dir} --output ${experiment_output_file} $beder_args 2>&1 > $output_file &
+        echo "$! | ${experiment_output_file} | $output_file"
+    done
+    #pipenv run python beder2 --benchmark ${benchmark_dir} --output ${output_file} > /dev/null &
+    
+done
+
+FAIL=0
+for job in `jobs -p`
+do
+    if wait $job; then
+        echo "${job} Success"
+    else
+        let "FAIL+=1"
+        echo "${job} Fail"
+    fi
+done
+
+for file in "${TMP_FILES_TO_DEL[@]}"; do
+    echo "Remvoing tmpfile $file"
+    rm $file
+done
+
+echo $FAIL
+if [ "$FAIL" == "0" ]; then
+    echo "Success!"
+    echo "Now we merge the expeirments!"
+
+    for benchmark_dir in `find ${root_dir} -type f -name log | xargs dirname | xargs dirname | uniq`; do
+        if [[ "$benchmark_dir" == /* ]]; then
+            # Path is absolute. All fine.
+            :
+        else
+            # Make path absolute
+            benchmark_dir=${SCRIPT_DIR}/${benchmark_dir}
+        fi
+
+        benchmark_name=`basename ${benchmark_dir}`
+        benchmark_name=${benchmark_name#"result-"} # remove "result-" prefix
+        output_file=${benchmark_dir}/${benchmark_name}.duckdb
+
+        if [ -f ${output_file} ]; then
+            echo "Skipping '${output_file}'. File already exists!"
+            continue
+        fi
+        echo "Final file: ${output_file}"
+        echo "Merging duckdb files into one. Using duckdb files from: $benchmark_dir"
+
+        pipenv run python duckdb-utils/merge.py --databases $benchmark_dir/*.duckdb --output ${output_file}
+    done
+
+
+    exit 0
+else
+    echo "FAIL! ($FAIL)"
+    exit 1
+fi

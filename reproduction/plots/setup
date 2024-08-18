@@ -1,0 +1,7 @@
+#!/usr/bin/env zsh
+
+set -evu
+
+Rscript -e 'renv::init()'
+Rscript -e 'renv::restore()'
+
