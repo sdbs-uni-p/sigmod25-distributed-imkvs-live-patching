@@ -205,7 +205,7 @@ plot <- ggplot(data=do.filter(data)) +
   facet_nested(o_masters_replicas_id_text + benchmark_output_name ~  facet,
                scales="free_y",
                independent = "y") +
-  coord_cartesian(xlim=c(0, 150)) +
+  coord_cartesian(xlim=c(0, 140)) +
   scale_x_continuous(breaks=c(0, 50, 120), labels=c(0, 50, 120)) +
   facetted_pos_scales(
     y = list(
@@ -245,7 +245,7 @@ plot <- ggplot(data=do.filter(data)) +
 plot <- add.plot.failover.restart.rectangles(plot, do.filter(action.data.failover.restart))
 plot <- plot + 
   geom_line(
-    aes(x = start,
+    aes(x = start - 10,
         y = total_latencies / 1000,
         color = name,
         group=name
@@ -259,7 +259,7 @@ plot <- plot +
 
 plot <- plot +
   geom_vline(data=do.filter(action.data.patch),
-             aes(xintercept=time_s,
+             aes(xintercept=time_s - 10,
                  group=name),
              color="black",
              linetype = "dashed",
@@ -267,7 +267,7 @@ plot <- plot +
              alpha=0.7,
              show.legend = F) +
   geom_vline(data=do.filter(action.data.failover.failover),
-             aes(xintercept=failover_start_time_s,
+             aes(xintercept=failover_start_time_s - 10,
                  group=name),
              color="black",
              linetype = "dashed",
@@ -277,7 +277,7 @@ plot <- plot +
 
 plot <- plot +
   geom_point(data=do.filter(data.bgsave),
-             aes(x = time_s,
+             aes(x = time_s - 10,
                  y = -Inf,
                  group=name),
              size = 1.5,
@@ -301,6 +301,6 @@ ggplot.save(plot +
                   legend.background = element_blank(),
                   # Horizontal spacing between facets
                   panel.spacing.x = unit(.6, "mm")) +
-              guides(color = guide_legend(nrow = 1))
-            , "RPS-Time", width=7.5, height=5.1, use.grid=FALSE)
+              guides(color = guide_legend(nrow = 1)) 
+            , "RPS-Time", width=16, height=5.1, use.grid=FALSE)
 

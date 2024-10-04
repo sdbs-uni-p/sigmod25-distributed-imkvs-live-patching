@@ -426,8 +426,8 @@ add.plot.failover.restart.rectangles <- function(plot, df, ymin=-Inf) {
   plot + 
     # Shutdown Start - Node is up again
     geom_rect(data=df,
-              aes(xmin=shutdown_start_time_s,
-                  xmax=start_start_time_s,
+              aes(xmin=shutdown_start_time_s-10,
+                  xmax=start_start_time_s-10,
                   ymin=ymin,
                   ymax=Inf,
                   group=name),
@@ -437,8 +437,8 @@ add.plot.failover.restart.rectangles <- function(plot, df, ymin=-Inf) {
               show.legend = F) +
     # Node is up again - First Sync. Finished (Partial or Full Resync.)
     geom_rect(data=df,
-              aes(xmin=start_start_time_s,
-                  xmax=first_sync_end_time_s,
+              aes(xmin=start_start_time_s-10,
+                  xmax=first_sync_end_time_s-10,
                   ymin=ymin,
                   ymax=Inf,
                   group=name),
@@ -448,8 +448,8 @@ add.plot.failover.restart.rectangles <- function(plot, df, ymin=-Inf) {
               show.legend = F) +
     # First Sync. Finished (Partial or Full Resync.) - Node Catched Up with Sync.
     geom_rect(data=df,
-              aes(xmin=first_sync_end_time_s,
-                  xmax=full_in_sync_end_time_s,
+              aes(xmin=first_sync_end_time_s-10,
+                  xmax=full_in_sync_end_time_s-10,
                   ymin=ymin,
                   ymax=Inf,
                   group=name),

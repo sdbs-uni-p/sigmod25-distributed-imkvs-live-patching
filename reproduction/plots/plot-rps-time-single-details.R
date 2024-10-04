@@ -266,7 +266,7 @@ plot <- add.plot.failover.restart.rectangles(plot, do.filter(action.data.failove
 
 plot <- plot +
   geom_line(
-    aes(x = start,
+    aes(x = start-10,
         y = total_latencies / 1000,
         color = name,
         group=name
@@ -279,7 +279,7 @@ plot <- plot +
 
 plot <- plot +
   geom_vline(data=action.data.patch,
-             aes(xintercept=time_s,
+             aes(xintercept=time_s-10,
                  group=name),
              color="black",
              linetype = "dashed",
@@ -287,7 +287,7 @@ plot <- plot +
              alpha=0.7,
              show.legend = F) +
   geom_vline(data=action.data.failover.failover,
-             aes(xintercept=failover_start_time_s,
+             aes(xintercept=failover_start_time_s -10,
                  group=name),
              color="black",
              linetype = "dashed",
@@ -300,7 +300,7 @@ plot <- plot +
 
 plot <- plot +
   geom_point(data=data.bgsave,
-             aes(x = time_s,
+             aes(x = time_s - 10,
                  y = -Inf,
                  group=name),
              size = 1.5,
@@ -324,5 +324,5 @@ ggplot.save(plot +
                   # Horizontal spacing between facets
                   panel.spacing.x = unit(0.6, "mm")) +
               guides(color = guide_legend(nrow = 1))
-            , "RPS-Time-Single-Details", width=7.5, height=4.3, use.grid=FALSE)
+            , "RPS-Time-Single-Details", width=16, height=4.3, use.grid=FALSE)
 
