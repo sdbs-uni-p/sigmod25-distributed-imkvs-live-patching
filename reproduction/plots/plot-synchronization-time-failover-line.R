@@ -142,7 +142,7 @@ plot <- plot + plot.theme.paper()
 
 # width=15, height = 18, use.grid=FALSE
 ggplot.save(plot +
-              theme(legend.position = c(0.5,1.32),
+              theme(legend.position = c(0.5,1.4),
                     plot.margin = margin(4, 0.5, 0.5, 0.5, unit="mm"),
                     #axis.title.x = element_text(margin = margin(t=-1)),
                     #axis.title.y = element_text(margin = margin(r=3)),
