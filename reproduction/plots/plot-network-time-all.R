@@ -189,7 +189,7 @@ plot <- ggplot(data=data.filter(data)) +
 
 plot <- plot +
   geom_line(
-    aes(x = start_time_s,
+    aes(x = start_time_s-10,
         y = total_bytes,
         
     ),
@@ -200,7 +200,7 @@ plot <- plot +
 plot <- add.plot.failover.restart.rectangles(plot, data.filter(action.data.failover.restart))
 plot <- plot +
   geom_vline(data=data.filter(action.data.patch),
-             aes(xintercept=time_s,
+             aes(xintercept=time_s-10,
                  group=name),
              color="black",
              linetype = "dashed",
@@ -208,7 +208,7 @@ plot <- plot +
              alpha=0.7,
              show.legend = F) +
   geom_vline(data=data.filter(action.data.failover.failover),
-             aes(xintercept=failover_start_time_s,
+             aes(xintercept=failover_start_time_s-10,
                  group=name),
              linetype = "dashed",
              color="black",
@@ -219,7 +219,7 @@ plot <- plot +
 
 plot <- plot +
   geom_point(data=data.filter(data.bgsave),
-             aes(x = time_s,
+             aes(x = time_s-10,
                  y = -Inf,
                  group=name),
              size = 1.5,

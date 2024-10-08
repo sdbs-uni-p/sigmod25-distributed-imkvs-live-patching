@@ -225,7 +225,7 @@ plot <- ggplot() +
   facet_nested(o_masters_replicas_id_text + node_name ~ benchmark_output_name + facet,
                scales="free_y",
                independent = "y") +
-  coord_cartesian(xlim=c(0, 150)) +
+  coord_cartesian(xlim=c(0, 140)) +
   scale_x_continuous(breaks=c(0, 50, 120), labels=c(0, 50, 120))
 
   
@@ -233,7 +233,7 @@ plot <- add.plot.failover.restart.rectangles(plot, do.filter(action.data.failove
 plot <- plot +
   geom_point(data=data,
     aes(
-      x = time_s,
+      x = time_s-10,
       y = latency_ms,
       color = latency_type,
       size = latency_type,
@@ -253,7 +253,7 @@ plot <- plot +
              mutate(label = ifelse(row_number() == which.max(latency_ms), label, "")) %>%
              ungroup(),
            aes(
-             x = time_s,
+             x = time_s-10,
              y = max_latency_ms,
              label = label
            ),
@@ -278,14 +278,14 @@ plot <- plot +
 
 plot <- plot +
   geom_vline(data=action.data.patch,
-             aes(xintercept=time_s),
+             aes(xintercept=time_s-10),
              color='blue',
              linetype = "dashed",
              size=0.1,
              alpha=0.7,
              show.legend = F) +
   geom_vline(data=action.data.failover.failover,
-             aes(xintercept=failover_start_time_s),
+             aes(xintercept=failover_start_time_s-10),
              color='black',
              linetype = "dashed",
              size=0.1,
@@ -294,7 +294,7 @@ plot <- plot +
 
 plot <- plot +
   geom_point(data=data.bgsave,
-             aes(x = time_s,
+             aes(x = time_s-10,
                  y = 0,
                  group=name),
              size = 1.5,

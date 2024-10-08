@@ -109,10 +109,10 @@ plot <- plot + plot.theme.paper()
 
 # width=15, height = 18, use.grid=FALSE
 ggplot.save(plot +
-              theme(legend.position = c(0.5,1.3),
+              theme(legend.position = c(0.5,1.27),
                     plot.margin = margin(5, 1.5, 2, 0.5, unit="mm"),
                     #axis.title.x = element_text(margin = margin(t=-2), vjust=-0.5),
-                    axis.title.y = element_text(margin = margin(r=1)),
+                    #axis.title.y = element_text(margin = margin(r=1)),
                     legend.direction ="horizontal",
                     legend.text = element_text(size = FONT.SIZE - 1, margin=margin(l=-3)),
                     legend.key.size = unit(1, "mm"),
@@ -125,7 +125,8 @@ ggplot.save(plot +
                     panel.spacing.y = unit(0.6, "mm"),
                     # Reduce space between the legend rows
                     legend.spacing.y = unit(0.3, "mm")) +
+            
               guides(fill = guide_legend(byrow = T, ncol=5))
-            , "Synchronization-Time-Patch-Boxplot-Idle", width=7.5, height=3.3, use.grid=F)
+            , "Synchronization-Time-Patch-Boxplot-Idle", width=10, height=3.3, use.grid=F)
 
 

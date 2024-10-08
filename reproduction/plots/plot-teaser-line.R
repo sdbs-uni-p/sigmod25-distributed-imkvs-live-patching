@@ -131,7 +131,7 @@ plot <- plot + plot.theme.paper()
 
 # width=15, height = 18, use.grid=FALSE
 ggplot.save(plot +
-              theme(legend.position = c(0.15,0.68),
+              theme(legend.position = c(0.107,0.68),
                     plot.margin = margin(0.5, 0.5, 0.5, 0.5, unit="mm"),
                     #axis.title.x = element_text(margin = margin(t=-1)),
                     axis.title.y = element_text(margin = margin(r=3), hjust =1),
@@ -146,6 +146,7 @@ ggplot.save(plot +
                     # Reduce space between the legend rows
                     legend.spacing.y = unit(0.2, "mm")
               ) +
+              scale_x_continuous(expand=c(0.02, 0.02)) +
               guides(color = guide_legend(byrow = T, ncol=2))
-            , "Synchronization-Time-Teaser", width=7.5, height=1.4, use.grid=F)
+            , "Synchronization-Time-Teaser", width=10, height=1.4, use.grid=F)
 

@@ -113,7 +113,7 @@ ggplot.save(plot_grid(plot +
                     legend.title = element_blank(),
                     legend.background = element_blank()) +
               guides(fill = guide_legend(ncol = 4))) +
-              draw_label("Patch Application\nDuration [ms]", x=0.015, y=0.5, vjust=0.5, angle= 90,
+              draw_label("Patch Application\nDuration [ms]", x=0.022, y=0.5, vjust=0.5, angle= 90,
                          fontfamily = "paper", fontface = "bold", size = FONT.SIZE)
-            , "Patch-Duration-RealWorld", width=16, height=2, use.grid=FALSE)
+            , "Patch-Duration-RealWorld", width=10, height=2, use.grid=FALSE)
 

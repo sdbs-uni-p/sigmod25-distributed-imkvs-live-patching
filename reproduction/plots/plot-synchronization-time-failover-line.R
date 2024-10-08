@@ -142,11 +142,10 @@ plot <- plot + plot.theme.paper()
 
 # width=15, height = 18, use.grid=FALSE
 ggplot.save(plot +
-              theme(axis.text.x = element_text(angle = -35, hjust = 0.5, vjust=-0.2),
-                    legend.position = c(0.5,1.4),
+              theme(legend.position = c(0.5,1.32),
                     plot.margin = margin(4, 0.5, 0.5, 0.5, unit="mm"),
-                    axis.title.x = element_text(margin = margin(t=-1)),
-                    axis.title.y = element_text(margin = margin(r=3)),
+                    #axis.title.x = element_text(margin = margin(t=-1)),
+                    #axis.title.y = element_text(margin = margin(r=3)),
                     legend.direction ="horizontal",
                     legend.text = element_text(size = FONT.SIZE - 1, margin=margin(l=-3)),
                     legend.key.size = unit(1, "mm"),
@@ -159,6 +158,7 @@ ggplot.save(plot +
                     # Reduce space between the legend rows
                     legend.spacing.y = unit(0.2, "mm")
                     ) +
+              scale_x_discrete(expand = c(0.1, 0.1)) +
               guides(color = guide_legend(byrow = T, ncol=5))
-            , "Synchronization-Time-Failover-Time", width=7.5, height=3.65, use.grid=F)
+            , "Synchronization-Time-Failover-Time", width=10, height=3.65, use.grid=F)
 

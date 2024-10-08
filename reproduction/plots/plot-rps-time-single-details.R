@@ -312,7 +312,7 @@ plot <- plot +
 plot <- plot + plot.theme.paper()
 
 ggplot.save(plot +
-            theme(legend.position = c(0.45,1.14),
+            theme(legend.position = c(0.45,1.135),
                   plot.margin = margin(4, 0.5, 0.5, 0.5, unit="mm"),
                   #axis.title.y = element_text(margin = margin(r=-5)),
                   legend.direction ="horizontal",
@@ -324,5 +324,5 @@ ggplot.save(plot +
                   # Horizontal spacing between facets
                   panel.spacing.x = unit(0.6, "mm")) +
               guides(color = guide_legend(nrow = 1))
-            , "RPS-Time-Single-Details", width=16, height=4.3, use.grid=FALSE)
+            , "RPS-Time-Single-Details", width=10, height=4.3, use.grid=FALSE)
 

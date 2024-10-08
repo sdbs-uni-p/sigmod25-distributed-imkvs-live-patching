@@ -244,7 +244,7 @@ plot <- ggplot() +
   facet_nested(node_name ~ facet,
                scales="free_y",
                independent = "y") +
-  coord_cartesian(xlim=c(0, 150)) +
+  coord_cartesian(xlim=c(0, 140)) +
   scale_x_continuous(breaks=c(0, 50, 120), labels=c(0, 50, 120)) +
   facetted_pos_scales(
     y = list(
@@ -274,7 +274,7 @@ plot <- ggplot() +
 plot <- plot +
   geom_point(data=data,
     aes(
-      x = time_s,
+      x = time_s-10,
       y = latency_ms,
       color = latency_type,
       size = latency_type,
@@ -295,7 +295,7 @@ plot <- plot +
              mutate(label = ifelse(row_number() == which.max(latency_ms), label, "")) %>%
              ungroup(),
            aes(
-             x = time_s,
+             x = time_s-10,
              y = max_latency_ms,
              label = label
            ),
@@ -320,14 +320,14 @@ plot <- plot +
 
 plot <- plot +
   geom_vline(data=action.data.patch,
-             aes(xintercept=time_s),
+             aes(xintercept=time_s-10),
              color='blue',
              linetype = "dashed",
              size=0.1,
              alpha=0.7,
              show.legend = F) +
   geom_vline(data=action.data.failover.failover,
-             aes(xintercept=failover_start_time_s),
+             aes(xintercept=failover_start_time_s-10),
              color='black',
              linetype = "dashed",
              size=0.1,
@@ -336,7 +336,7 @@ plot <- plot +
 
 plot <- plot +
   geom_point(data=data.bgsave,
-             aes(x = time_s,
+             aes(x = time_s-10,
                  y = 0,
                  group=name),
              size = 1.5,
@@ -349,11 +349,11 @@ plot <- plot + plot.theme.paper()
 
 # width=15, height = 18, use.grid=FALSE
 ggplot.save(plot +
-              theme(legend.position = c(0.5,1.27),
+              theme(legend.position = c(0.5,1.21),
                     plot.margin = margin(4, 0.5, 0.5, 0.5, unit="mm"),
                     #axis.title.y = element_text(margin = margin(), hjust=0.6),
                     legend.direction ="horizontal",
-                    legend.text = element_text(size = FONT.SIZE - 1, margin=margin(l=-3)),
+                    legend.text = element_text(size = FONT.SIZE - 1),
                     legend.key.size = unit(1, "mm"),
                     legend.margin = margin(0,0,0,0),
                     legend.title = element_blank(),
@@ -362,5 +362,5 @@ ggplot.save(plot +
                     panel.spacing.x = unit(0.6, "mm"),
                     panel.spacing.y = unit(1.3, "mm")) +
               guides(color = guide_legend(nrow = 1))
-            , "Latencies-Single-Details", width=7.5, height=3, use.grid=FALSE)
+            , "Latencies-Single-Details", width=10, height=3.5, use.grid=FALSE)
   

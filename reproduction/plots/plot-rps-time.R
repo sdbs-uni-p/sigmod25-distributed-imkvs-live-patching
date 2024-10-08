@@ -302,5 +302,5 @@ ggplot.save(plot +
                   # Horizontal spacing between facets
                   panel.spacing.x = unit(.6, "mm")) +
               guides(color = guide_legend(nrow = 1)) 
-            , "RPS-Time", width=16, height=5.1, use.grid=FALSE)
+            , "RPS-Time", width=10, height=5.1, use.grid=FALSE)
 
