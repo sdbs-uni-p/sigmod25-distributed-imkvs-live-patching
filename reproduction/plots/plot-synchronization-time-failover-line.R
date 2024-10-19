@@ -97,7 +97,7 @@ ylimrestart <- mapply("-", range(data$total_duration[data$action == "Restart"]),
 
 plot <- ggplot() +
   ylab("Update Lag [s]") +
-  xlab("Memory State [GiB]") +
+  xlab("Memory State Size [GiB]") +
   facet_nested(action ~ facet + name,
              scale="free_y",
              independent = "y") +

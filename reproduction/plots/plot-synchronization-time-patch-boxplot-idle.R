@@ -67,7 +67,7 @@ ylimpushidle <- mapply("-", range(data$synchronization_duration_s[data$patch_met
 
 plot <- ggplot() +
   ylab("Update Lag [s]") +
-  xlab("Memory State [GiB]") +
+  xlab("Memory State Size [GiB]") +
   facet_nested(patch_method ~  facet, 
                scale="free_y",
                independent="y") +

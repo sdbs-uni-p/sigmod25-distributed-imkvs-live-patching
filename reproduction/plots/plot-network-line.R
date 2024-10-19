@@ -122,7 +122,7 @@ ylimhigh <- mapply("-", range(data$value[data$network == "All" & data$facet == '
 
 
 plot <- ggplot(data=data) +
-  xlab("Memory State [GiB]") +
+  xlab("Memory State Size [GiB]") +
   facet_nested( ~ name,
                scales = "free",
                space= "free_x",

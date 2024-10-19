@@ -101,7 +101,7 @@ print(data)
 data$synchronization_duration_s <- data$synchronization_duration_s / 60
 plot <- ggplot() +
   ylab("Update  \nLag [min]") +
-  xlab("Memory State [GiB]") +
+  xlab("Memory State Size [GiB]") +
   coord_cartesian(ylim=c(-1, max(data$synchronization_duration_s) + 1)) +
   scale_y_continuous(breaks = c(0, 5, 10, 15, 20), labels=c("0", "", "10", "", "20"))
 
