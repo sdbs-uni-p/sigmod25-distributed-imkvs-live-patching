@@ -43,6 +43,7 @@ for patch in "${patches[@]}"; do
     set +e 
     kill -9 $pid
     set -e
+    sleep 2
 done
 
 cd ${SCRIPT_DIR}
