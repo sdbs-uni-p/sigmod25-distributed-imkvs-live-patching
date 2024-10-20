@@ -16,7 +16,7 @@ patches=(`git tag -l | grep wfpatch`)
 
 for patch in "${patches[@]}"; do
     set +e
-    pgrep -x redis-server | xargs kill -9
+    pgrep -f redis-server | xargs kill -9
     set -e
 
     cd ${SCRIPT_DIR}/redis-build-utils
