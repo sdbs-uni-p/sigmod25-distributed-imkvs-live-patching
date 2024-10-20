@@ -35,7 +35,9 @@ for patch in "${patches[@]}"; do
     WF_LOGFILE=$wf_log WF_PATCH_TRIGGER_FIFO=/tmp/redis-trigger WF_PATCH_QUEUE=`readlink -f ${SCRIPT_DIR}/output/${patch}/patch--* | tr '\n' ',' | sed 's/,$//'` timeout 2m ./redis-server &
     pid=$!
     sleep 2
+    set +e
     timeout 30s bash -c 'echo 1 > /tmp/redis-trigger'
+    set -e
     sleep 5
    
     set +e 
