@@ -21,7 +21,7 @@ This repository hosts the additional materials accompanying the SIGMOD 2025 pape
 
 ## Reproduction
 
-Please see the [reproduction](reproduction) directory for all steps on how to reproduce this research.
+Please see the [reproduction](reproduction) directory for all steps on how to reproduce this research. **Before performing the reproduction, please see the "Server" section below, as a modified Linux kernel is required for the experiments.**
 
 ### Server
 
