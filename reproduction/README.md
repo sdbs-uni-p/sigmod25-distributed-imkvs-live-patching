@@ -62,10 +62,11 @@ We make use of DuckDB for data anlaysis. However, we have encountered some issue
 
 - All generated plots will be stored in the `data/output` directory. Please see the [data](data) directory of a mapping of file name to the figure referenced in the paper.
 
+---
 
-Below are the detailed steps to reproduce our study.
+The steps above are a convenient way to reproduce the experiments. A detailed description of the individual steps can be found below.
 
-## Experiments
+## Experiments - Detailed Steps
 
 > **_NOTE:_** The experiments have to be performed with the MMView Linux kernel (`cd ~ && ./kernel-mmview && sudo reboot` in the QEMU VM).
 
