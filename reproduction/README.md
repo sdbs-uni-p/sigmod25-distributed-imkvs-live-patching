@@ -43,6 +43,7 @@ To easily reproduce the experiments, the following scripts can be executed:
 cd ~
 ./kernel-mmview
 sudo reboot
+
 cd distributed-imkvs-live-patching/reproduction
 ./reproduce-experiments
 
@@ -52,6 +53,7 @@ cd distributed-imkvs-live-patching/reproduction
 cd ~
 ./kernel-regular
 sudo reboot
+
 cd distributed-imkvs-live-patching/reproduction
 ./reproduce-analysis
 ```
