@@ -8,7 +8,7 @@
 This repository hosts the additional materials accompanying the SIGMOD 2025 paper titled ***Live Patching for Distributed In-Memory Key-Value Stores***. The original experiment data is available on Zenodo: https://doi.org/10.5281/zenodo.13729902. Additionally, a QEMU virtual machine configured to reproduce our experiments is also hosted on Zenodo: https://doi.org/10.5281/zenodo.13765240. Please note that the data and VM are provided as separate Zenodo uploads due to the maximum file size limitations.
 
 - [Reproduction](#reproduction)
-  - [QEMU VM](#qemu-vm)
+  - [Server](#server)
 - [Original Data](#original-data)
   - [raw vs. original data](#raw-vs-original-data)
 - [WfPatch Extension](#wfpatch-extension)
@@ -23,13 +23,13 @@ This repository hosts the additional materials accompanying the SIGMOD 2025 pape
 
 Please see the [reproduction](reproduction) directory for all steps on how to reproduce this research.
 
-### QEMU VM
+### Server
 
 To reproduce our study, you will need a modified Linux kernel, which is available at [https://github.com/luhsra/linux-mmview](https://github.com/luhsra/linux-mmview) (commit hash: `ecfcf9142ada6047b07643e9fa2afe439b69a5f0`).
 
-For convenience, we provide a pre-configured QEMU virtual machine that can be used to replicate our experiments. However, please note that running the experiments inside a VM may introduce overhead that could affect the results. Therefore, we recommend conducting the experiments directly on a server for more accurate reproduction of our findings.
+For convenience, we provide a pre-configured QEMU virtual machine that can be used to replicate our experiments. **However, please note that running the experiments inside a VM may introduce overhead that could affect the results. Therefore, we recommend conducting the experiments directly on a server for more accurate reproduction of our findings.**
 
-Detailed instructions for setting up QEMU and notes about how to prepare your server for reproduction are available in the [qemu](qemu) directory.
+Detailed instructions for setting up QEMU and notes about how to prepare your server for reproduction are available in the [server](server) directory.
 
 ## Original Data
 
