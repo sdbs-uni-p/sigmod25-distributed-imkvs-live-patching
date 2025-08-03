@@ -1,6 +1,6 @@
 # Transformation
 
-These scripts are responsible for transforming the raw experiment data into DuckDB database files. These steps have to be performed with the **regular** Linux kernel:
+These scripts are responsible for transforming the raw experiment data stored in the `../../data` directory into DuckDB database files. These steps have to be performed with the **regular** Linux kernel:
 
 ```
 ./setup
