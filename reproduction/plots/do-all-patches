@@ -1,6 +1,10 @@
 #!/usr/bin/env zsh
 
 source INPUT_BASE_DIRECTORY
+if [ ! -f $INPUT_BASE_DIRECTORY/real-world-patches/realworldpatches.csv ]; then
+    echo "$INPUT_BASE_DIRECTORY/real-world-patches/realworldpatches.csv does not exist.. Skipping plotting.."
+    exit 0
+fi
 ./exec-file-py --input-data \
     $INPUT_BASE_DIRECTORY/real-world-patches/realworldpatches.csv \
     --output $INPUT_BASE_DIRECTORY/output --plot plot-all-patches.R
