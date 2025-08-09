@@ -81,7 +81,7 @@ cd distributed-imkvs-live-patching/reproduction
 ./reproduce-crawl-real-world-patches-postgresql
 ```
 
-**Analysis:**
+**Experiment Analysis:**
 
 Transforms the raw experiment data into DuckDB files and performs the subsequent analysis.
 

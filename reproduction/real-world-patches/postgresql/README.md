@@ -41,3 +41,5 @@ cd crawl-postgres
 
 As the script crawls the current commitfests available on the website - which may differ from the state when we initially collected the data — we have provided our original output files in the [original-data](original-data) directory.
 The `info-*` files contain the complete output of the respective scripts for reference.
+
+For the share of found and live patchable commits, please see the `real-world-patches-postgresql.txt` file in the  [../../data](../../data) directory (and the README of the `data` directory on how to read the file). 

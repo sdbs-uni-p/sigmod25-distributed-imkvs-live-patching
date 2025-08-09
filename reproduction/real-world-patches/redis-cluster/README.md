@@ -27,3 +27,5 @@ cd ..
 As the script crawls the current git development history - which may differ from the state when we initially collected the data — we have provided our original output files in the [original-data](original-data) directory.
 The `info-*` files contain the complete output of the respective scripts for reference.
 The [original-data/crawled-commits.txt](original-data/crawled-commits.txt) file contains a list of the git versions that were available and used at the time we conducted these experiments.
+
+For the share of found and live patchable commits, please see the `real-world-patches-redis.txt` file in the  [../../data](../../data) directory (and the README of the `data` directory on how to read the file). 
