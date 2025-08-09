@@ -10,16 +10,3 @@ cd ${SCRIPT_DIR}/redis-cluster/experiments
 cd experiments
 ./do-all
 
-# PostgreSQL real-world patches
-cd ${SCRIPT_DIR}/real-world-patches/postgresql
-./setup
-./do
-
-# Redis Cluster real-world patches
-cd ${SCRIPT_DIR}/real-world-patches/redis-cluster
-./setup
-cd ${SCRIPT_DIR}/real-world-patches/redis-cluster/crawl-redis
-./do
-cd ..
-./experiment
-

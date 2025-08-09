@@ -1,0 +1,11 @@
+#!/usr/bin/env zsh
+
+set -evu
+
+SCRIPT_DIR=${0:a:h}
+
+# PostgreSQL real-world patches
+cd ${SCRIPT_DIR}/real-world-patches/postgresql
+./setup
+./do
+
