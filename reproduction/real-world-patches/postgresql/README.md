@@ -2,7 +2,7 @@
 
 > **_NOTE:_** The experiments can be performed with the regular or the MMView Linux kernel.
 
-> **_DISCLAIMER:_** This toolchain relies on the current state of the PostgreSQL commitfest website and the PostgreSQL git history, so reproducing the results may lead to variations. For reference, the data we collected is available in the [original-data](original-data) folder.
+> **_DISCLAIMER:_** This toolchain relies on the current state of the PostgreSQL commitfest website and the PostgreSQL git history, so reproducing the results may lead to variations. Since this toolchain uses web scraping, it is also possible that this toolchain may fail (e.g., if the HTML structure of the website is changed). For reference, the data we collected is available in the [original-data](original-data) folder.
 
 We extracted data from the PostgreSQL [commitfest](https://commitfest.postgresql.org) (a periodic event for reviewing, testing, and committing new patches) by identifying URLs linking to the discussions of the commits.
 Using these URLs, we crawled the git commit history for commit messages referencing the discussion URLs.

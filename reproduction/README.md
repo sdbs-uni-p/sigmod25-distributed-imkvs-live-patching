@@ -33,10 +33,10 @@ We conducted our experiments on a Dell PowerEdge R640 server equipped with:
 
 To easily reproduce the experiments, the following scripts can be executed:
 
+**Experiments - Redis Cluster Live Patching:**
+
+Executes all experiments of Redis Cluster. You may have to adjust the CPU pinning before running this script.
 ```
-# Executes all experiments of Redis Cluster and crawls real-world patches
-# for Redis Cluster and PostgreSQL. You may have to adjust the CPU pinning
-# before running this script.
 # IMPORTANT: This script has to be executed with the **MMView** Linux Kernel.
 # IMPORTANT: Please see the note above about CPU pinning before running the experiments.
 # 					 Otherwise, experiments may abort unexpectedly.
@@ -46,9 +46,46 @@ sudo reboot
 
 cd distributed-imkvs-live-patching/reproduction
 ./reproduce-experiments
+```
 
-# Transforms the raw experiment data into DuckDB files and performs the
-# subsequent analysis.
+**Experiments - Real-World Patch Crawling:**
+
+**_DISCLAIMER:_ Real-World patch crawling is done based on the *current state* of the respective git history (Redis/PostgreSQL), so reproducing the results *may lead to variations*. For reference, the data we collected is available in a dedicated directory (see below).**
+
+*Redis:*
+
+Our collected data is available in the [real-world-patches/redis/original-data](real-world-patches/redis/original-data) folder. Please see the README in [real-world-patches/redis](real-world-patches/redis) for details.
+
+```
+# IMPORTANT: This script has to be executed with the **MMView** Linux Kernel.
+cd ~
+./kernel-mmview
+sudo reboot
+
+cd distributed-imkvs-live-patching/reproduction
+./reproduce-crawl-real-world-patches-redis
+```
+
+
+
+*PostgreSQL:*
+
+Our collected data is available in the [real-world-patches/postgresql/original-data](real-world-patches/postgresql/original-data) folder. Please see the README in [real-world-patches/postgresql](real-world-patches/postgresql) for details.
+
+**_IMPORTANT:_** This toolchain relies on the *current state* of the PostgreSQL commitfest website and the PostgreSQL git history, so reproducing the results *may lead to variations*. Since this toolchain uses web scraping, it is also possible that this toolchain may fail (e.g., if the HTML structure of the website has changed). 
+
+```
+# This script does not require a specific Linux kernel.
+
+cd distributed-imkvs-live-patching/reproduction
+./reproduce-crawl-real-world-patches-postgresql
+```
+
+**Analysis:**
+
+Transforms the raw experiment data into DuckDB files and performs the subsequent analysis.
+
+```
 # IMPORTANT: This script has to be executed with the **regular** Linux Kernel.
 cd ~
 ./kernel-regular
@@ -57,6 +94,8 @@ sudo reboot
 cd distributed-imkvs-live-patching/reproduction
 ./reproduce-analysis
 ```
+
+
 
 We make use of DuckDB for data anlaysis. However, we have encountered some issues when using DuckDB with the MMView Linux kernel. Therefore, it is important to use the regular Linux kernel when transforming or analyzing the data (i.e. when DuckDB is used).
 
