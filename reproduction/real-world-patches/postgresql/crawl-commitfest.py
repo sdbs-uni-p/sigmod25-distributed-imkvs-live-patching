@@ -6,11 +6,12 @@ from bs4 import BeautifulSoup
 from common import parse_message_id
 
 COMMITFEST_URL = "https://commitfest.postgresql.org"
+COMMITFEST_HISTORY_URL = "https://commitfest.postgresql.org/commitfest_history"
 COMMITED_STATUS_URL_ADDITION = "status=4"
 
 INFO_FILE = "info.crawling.txt"
 
-response = requests.get(COMMITFEST_URL)
+response = requests.get(COMMITFEST_HISTORY_URL)
 
 class CommitGroup():
     def __init__(self, header:str):
@@ -27,7 +28,9 @@ def get_commitfest_url(list_entry):
     return None
 
 def get_commitfest_commits(url, header="Bug Fixes"):
-    response = requests.get(url + "?" + COMMITED_STATUS_URL_ADDITION)
+    url_download = url + "?" + COMMITED_STATUS_URL_ADDITION
+
+    response = requests.get(url_download)
     soup = BeautifulSoup(response.text, "lxml")
     table_rows = soup.find_all("tr")
     
