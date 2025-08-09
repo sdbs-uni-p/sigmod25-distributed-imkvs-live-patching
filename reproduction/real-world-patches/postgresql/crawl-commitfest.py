@@ -46,7 +46,7 @@ def get_commitfest_commits(url, header="Bug Fixes"):
                 return commit_group
         elif commit_group:
             a_tag = table_row.find("a")
-            commit_group.commit_urls.append(url + a_tag["href"])
+            commit_group.commit_urls.append(COMMITFEST_URL + a_tag["href"])
     return commit_group
 
 
