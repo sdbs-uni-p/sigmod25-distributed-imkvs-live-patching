@@ -35,7 +35,7 @@ To easily reproduce the experiments, the following scripts can be executed:
 
 **Experiments - Redis Cluster Live Patching:**
 
-Executes all experiments of Redis Cluster. You may have to adjust the CPU pinning before running this script.
+Executes all experiments of Redis Cluster. You may have to adjust the CPU pinning before running this script (see above).
 ```
 # IMPORTANT: This script has to be executed with the **MMView** Linux Kernel.
 # IMPORTANT: Please see the note above about CPU pinning before running the experiments.
