@@ -9,5 +9,5 @@ cd ${SCRIPT_DIR}/crawl-redis
 ./crawl ../crawled-commits.txt
 
 cd ${SCRIPT_DIR}
-./analyze-real-world-success-patch-list ${SCRIPT_DIR}/crawl-redis/output/patches
+./analyze-real-world-success-patch-list ${SCRIPT_DIR}/crawl-redis/output/patches > ${SCRIPT_DIR}/../../../data/real-world-patches-redis.txt
 
