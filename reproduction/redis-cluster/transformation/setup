@@ -6,11 +6,10 @@ SCRIPT_DIR=${0:a:h}
 cd ${SCRIPT_DIR}
 pipenv install
 
-if [ ! -d redis ]; then
-    git clone https://github.com/redis/redis.git
-    cd redis
-    git checkout 7.0.11
-    make -j `nproc`
-    ln -sf src/redis-server ../beder2
-    ln -sf src/redis-cli ../beder2
-fi
+rm -rf redis
+git clone https://github.com/redis/redis.git
+cd redis
+git checkout 7.0.11
+make -j `nproc`
+ln -sf src/redis-server ../beder2
+ln -sf src/redis-cli ../beder2
