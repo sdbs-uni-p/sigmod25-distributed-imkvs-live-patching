@@ -11,6 +11,6 @@ if [ ! -d redis ]; then
     cd redis
     git checkout 7.0.11
     make -j `nproc`
-    ln -s src/redis-server ../transformation/beder2
-    ln -s src/redis-cli ../transformation/beder2
+    ln -s src/redis-server ../beder2
+    ln -s src/redis-cli ../beder2
 fi
