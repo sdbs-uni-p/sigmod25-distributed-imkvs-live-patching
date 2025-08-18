@@ -5,6 +5,10 @@ SCRIPT_DIR=${0:a:h}
 cd ${SCRIPT_DIR}
 
 for data_dir in ../../data/*; do 
+    if [ -f ${data_dir} ]; then
+        echo "Skipping ${data_dir}"
+        continue
+    fi
     echo $data_dir
     ./transform-experiment ${data_dir} 
 done
