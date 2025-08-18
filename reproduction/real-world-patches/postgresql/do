@@ -9,5 +9,7 @@ pipenv run ./combine-commitfest-with-git.py
 
 cd ${SCRIPT_DIR}/crawl-postgres
 ./crawl ../bug-fix-commits.txt
-./analyze-real-world-success-patch-list output/patches/ > ${SCRIPT_DIR}/../../data/real-world-patches-postgresql.txt
+
+mkdir -p ${SCRIPT_DIR}/../../data/output
+./analyze-real-world-success-patch-list output/patches/ > ${SCRIPT_DIR}/../../data/output/real-world-patches-postgresql.txt
 
