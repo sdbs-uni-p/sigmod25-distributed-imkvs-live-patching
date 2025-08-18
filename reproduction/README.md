@@ -99,6 +99,9 @@ cd distributed-imkvs-live-patching/reproduction
 
 We make use of DuckDB for data anlaysis. However, we have encountered some issues when using DuckDB with the MMView Linux kernel. Therefore, it is important to use the regular Linux kernel when transforming or analyzing the data (i.e. when DuckDB is used).
 
+Troubleshooting:
+In case one of the analysis scripts crashes (e.g., due to an out-of-memory error caused by DuckDB), please delete all DuckDB database files (`cd data && find . | grep duckdb | xargs rm`), reboot the system (`sudo reboot`) and start the `reproduce-analysis` script again.
+
 **Analysis:**
 
 - All generated plots will be stored in the `data/output` directory. Please see the [data](data) directory of a mapping of file name to the figure referenced in the paper.
