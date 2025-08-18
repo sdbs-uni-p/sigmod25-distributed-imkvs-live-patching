@@ -12,7 +12,8 @@ To be able to execute this reproduction package, the following hardware is recom
 - At least 384 GB of main memory
 - At least 22 CPU cores
 
-Reproducing the experiments takes about **85 hours** and will generate about **525 GB** of data (script `reproduce-experiments`). The subsequent transformation of the data and its analysis takes **2 hours** and generates another **160 GB** of data (script `reproduce-analysis`). In summary, full reproduction takes **87 hours** and generates **685 GB** of data.
+Reproducing the experiments takes about **130 hours** and will generate about **685 GB** of data.
+
 ## Hardware
 
 We conducted our experiments on a Dell PowerEdge R640 server equipped with:
@@ -36,6 +37,9 @@ To easily reproduce the experiments, the following scripts can be executed:
 **Experiments - Redis Cluster Live Patching:**
 
 Executes all experiments of Redis Cluster. You may have to adjust the CPU pinning before running this script (see above).
+
+Estimated duration: 100 hours.
+
 ```
 # IMPORTANT: This script has to be executed with the **MMView** Linux Kernel.
 # IMPORTANT: Please see the note above about CPU pinning before running the experiments.
@@ -56,6 +60,8 @@ cd distributed-imkvs-live-patching/reproduction
 
 Our collected data is available in the [real-world-patches/redis/original-data](real-world-patches/redis/original-data) folder. Please see the README in [real-world-patches/redis](real-world-patches/redis) for details.
 
+Estimated duration: 12 hours.
+
 ```
 # IMPORTANT: This script has to be executed with the **MMView** Linux Kernel.
 cd ~
@@ -74,6 +80,8 @@ Our collected data is available in the [real-world-patches/postgresql/original-d
 
 **_IMPORTANT:_** This toolchain relies on the *current state* of the PostgreSQL commitfest website and the PostgreSQL git history, so reproducing the results *may lead to variations*. Since this toolchain uses web scraping, it is also possible that this toolchain may fail (e.g., if the HTML structure of the website has changed). 
 
+Estimated duration: 12 hours.
+
 ```
 # This script does not require a specific Linux kernel.
 
@@ -84,6 +92,8 @@ cd distributed-imkvs-live-patching/reproduction
 **Experiment Analysis:**
 
 Transforms the raw experiment data into DuckDB files and performs the subsequent analysis.
+
+Estimated duration: 6 hours.
 
 ```
 # IMPORTANT: This script has to be executed with the **regular** Linux Kernel.
