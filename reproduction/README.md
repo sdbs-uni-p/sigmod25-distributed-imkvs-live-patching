@@ -58,7 +58,7 @@ cd distributed-imkvs-live-patching/reproduction
 
 *Redis:*
 
-Our collected data is available in the [real-world-patches/redis/original-data](real-world-patches/redis/original-data) folder. Please see the README in [real-world-patches/redis](real-world-patches/redis) for details.
+Our collected data is available in the [real-world-patches/redis-cluster/original-data](real-world-patches/redis-cluster/original-data) folder. Please see the README in [real-world-patches/redis-cluster](real-world-patches/redis-cluster) for details.
 
 Estimated duration: 12 hours.
 

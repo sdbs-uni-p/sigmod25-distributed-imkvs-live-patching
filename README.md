@@ -10,9 +10,9 @@ This repository hosts the additional materials accompanying the SIGMOD 2025 pape
 - [Reproduction](#reproduction)
   - [Server](#server)
 - [Original Data](#original-data)
-  - [raw vs. original data](#raw-vs-original-data)
+  - [raw vs. transformed data](#raw-vs-transformed-data)
 - [WfPatch Extension](#wfpatch-extension)
-- [Directory Overview](directory-overview)
+- [Directory Overview](#directory-overview)
 - [Referenced from the Paper](#referenced-from-the-paper)
   - [Network Overhead](#network-overhead)
   - [Reducing Noise](#reducing-noise)
@@ -61,8 +61,8 @@ The Case for DBMS Live Patching. In Proc. VLDB Endow. 17. Reproduction Package: 
 
 - [image](images)
   - Plots referenced in this README.
-- [qemu](qemu)
-  - Location for the QEMU VM.
+- [server](server)
+  - Location for the QEMU VM and instructions for preparing your own server.
 - [reproduction](reproduction)
   - Scripts to reproduce our research.
 - [wfpatch-extension](wfpatch-extension)

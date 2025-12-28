@@ -7,19 +7,19 @@ Please see the [../real-world][../real-world] directory for the scripts to crawl
 
 ### Source Code Modifications
 
-The directory [redis-cluster/experiments/patches](redis-cluster/experiments/patches) contains the source code modifications we made to external software for our Redis Cluster experiments.
+The directory [experiments/patches](experiments/patches) contains the source code modifications we made to external software for our Redis Cluster experiments.
 The changes are git patches (https://git-scm.com/docs/git-format-patch).
 
-- [memtier_benchmark.patch](redis-cluster/experiments/patches/memtier_benchmark.patch) includes the changes to the memtier benchmark framework (e.g. single latency measurement etc.).
-- [redis-live-patch.patch](redis-cluster/experiments/patches/redis-live-patch.patch) contains all changes for our live patching Redis Cluster prototype - it equips Redis Cluster with live patching and patch distribution capabilities.
-- [redis-network-single-latencies.patch](redis-cluster/experiments/patches/redis-network-single-latencies.patch) contains the additions to the Redis Cluster to measure sent bytes (for the experiments in Section 6.7).
+- [memtier_benchmark.patch](experiments/patches/memtier_benchmark.patch) includes the changes to the memtier benchmark framework (e.g. single latency measurement etc.).
+- [redis-live-patch.patch](experiments/patches/redis-live-patch.patch) contains all changes for our live patching Redis Cluster prototype - it equips Redis Cluster with live patching and patch distribution capabilities.
+- [redis-network-single-latencies.patch](experiments/patches/redis-network-single-latencies.patch) contains the additions to the Redis Cluster to measure sent bytes (for the experiments in Section 6.7).
 
 
 ### Synthetic Patch
 
-The directory [redis-cluster/experiments/patches/generate-redis-getPatch-patches](redis-cluster/experiments/patches/generate-redis-getPatch-patches) stores the synthetic patch along with scripts for generating successive patches of any length.
-The [base.patch](redis-cluster/experiments/patches/generate-redis-getPatch-patches/base.patch) file marks the starting point of the synthetic patch.
-Notably, the function and file that the synthetic patch modifies are introduced through our live patching prototype [redis-live-patch.patch](redis-cluster/experiments/patches/redis-live-patch.patch).
+The directory [experiments/patches/generate-redis-getPatch-patches](experiments/patches/generate-redis-getPatch-patches) stores the synthetic patch along with scripts for generating successive patches of any length.
+The [base.patch](experiments/patches/generate-redis-getPatch-patches/base.patch) file marks the starting point of the synthetic patch.
+Notably, the function and file that the synthetic patch modifies are introduced through our live patching prototype [redis-live-patch.patch](experiments/patches/redis-live-patch.patch).
 
 ## Experiments
 
